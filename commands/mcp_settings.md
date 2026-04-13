@@ -28,8 +28,31 @@ sudo npm install -g @openai/codex
 
 ### MCP 서버 등록
 ```bash
-claude mcp add --transport stdio codex -- codex mcp-server
+claude mcp add -s user --transport stdio codex -- codex mcp-server
 ```
+
+`-c` 플래그로 config 값을 인라인 오버라이드할 수 있다:
+```bash
+claude mcp add -s user --transport stdio codex -- codex mcp-server -c reasoning_effort="xhigh" -c model="o3"
+```
+
+### Codex 설정 파일 (`~/.codex/config.toml`)
+
+MCP 등록 시 `-c`로 매번 지정하는 대신, `~/.codex/config.toml`에서 기본값을 설정할 수 있다:
+
+```toml
+model = "gpt-5.4"
+reasoning_effort = "xhigh"      # low | medium | high | xhigh
+```
+
+| 키 | 설명 | 기본값 |
+|---|---|---|
+| `model` | 사용할 모델 | `o3` |
+| `reasoning_effort` | 추론 수준 | `medium` |
+| `sandbox_permissions` | 샌드박스 권한 | `[]` |
+| `shell_environment_policy.inherit` | 셸 환경변수 상속 | - |
+
+> `-c` 플래그는 config.toml 값을 오버라이드한다. config.toml에 이미 설정된 값은 별도 지정 없이 MCP 서버에 자동 적용된다.
 
 ### 제공 도구
 
@@ -67,7 +90,8 @@ gemini
 Gemini CLI는 자체 MCP 서버 모드가 없으므로 서드파티 래퍼 사용:
 
 ```bash
-claude mcp add --transport stdio gemini -- npx -y gemini-mcp-tool
+sudo npm install -g gemini-mcp-tool
+claude mcp add -s user --transport stdio gemini -- gemini-mcp-tool
 ```
 
 ### 제공 도구
@@ -92,8 +116,8 @@ claude mcp add --transport stdio gemini -- npx -y gemini-mcp-tool
       "args": ["mcp-server"]
     },
     "gemini": {
-      "command": "npx",
-      "args": ["-y", "gemini-mcp-tool"]
+      "command": "gemini-mcp-tool",
+      "args": []
     }
   }
 }
