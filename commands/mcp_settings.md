@@ -33,7 +33,7 @@ claude mcp add -s user --transport stdio codex -- codex mcp-server
 
 `-c` 플래그로 config 값을 인라인 오버라이드할 수 있다:
 ```bash
-claude mcp add -s user --transport stdio codex -- codex mcp-server -c reasoning_effort="xhigh" -c model="o3"
+claude mcp add -s user --transport stdio codex -- codex mcp-server -c reasoning_effort="xhigh" -c model="gpt-5.4"
 ```
 
 ### Codex 설정 파일 (`~/.codex/config.toml`)
@@ -90,17 +90,29 @@ gemini
 Gemini CLI는 자체 MCP 서버 모드가 없으므로 서드파티 래퍼 사용:
 
 ```bash
-sudo npm install -g gemini-mcp-tool
-claude mcp add -s user --transport stdio gemini -- gemini-mcp-tool
+npm install -g gemini-mcp-tool
+claude mcp add -s user --transport stdio gemini -- gemini-mcp
 ```
+
+> 패키지명은 `gemini-mcp-tool`이지만 실행 바이너리는 `gemini-mcp`이다.
+> Codex와 달리 등록 시 모델을 고정하지 않고, 도구 호출 시 `model` 파라미터로 선택한다.
 
 ### 제공 도구
 
 | 도구 | 설명 |
 |---|---|
-| `ask-gemini` | Gemini에 질문/작업 요청 |
-| `brainstorm` | 브레인스토밍 |
+| `ask-gemini` | Gemini에 질문/작업 요청 (`model` 파라미터로 모델 선택) |
+| `brainstorm` | 브레인스토밍 (창의적 프레임워크 자동 적용) |
 | `fetch-chunk` | 대용량 콘텐츠 청크 단위 조회 |
+
+### 주요 파라미터 (`ask-gemini`)
+
+| 파라미터 | 설명 | 예시 |
+|---|---|---|
+| `prompt` | 분석 요청 (필수). `@file` 구문으로 파일 포함 가능 | `@main.py 이 코드 설명해줘` |
+| `model` | 모델 선택 (기본: `gemini-2.5-pro`) | **`gemini-3.1-pro`**, `gemini-2.5-flash` |
+| `sandbox` | 샌드박스 모드에서 코드 실행 | `true` / `false` |
+| `changeMode` | 구조화된 편집 제안 반환 | `true` / `false` |
 
 ---
 
@@ -113,11 +125,14 @@ claude mcp add -s user --transport stdio gemini -- gemini-mcp-tool
   "mcpServers": {
     "codex": {
       "command": "codex",
-      "args": ["mcp-server"]
+      "args": ["mcp-server", "-c", "model=\"gpt-5.4\"", "-c", "reasoning_effort=\"xhigh\""]
     },
     "gemini": {
-      "command": "gemini-mcp-tool",
-      "args": []
+      "command": "gemini-mcp",
+      "args": [],
+      "env": {
+        "GEMINI_MODEL": "gemini-3.1-pro"
+      }
     }
   }
 }
