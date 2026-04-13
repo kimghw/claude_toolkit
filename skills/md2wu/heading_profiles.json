@@ -1,0 +1,120 @@
+{
+  "_meta": {
+    "description": "Source Family별 헤딩 추출 정규화 프로파일. md2wu Stage 1-2에서 참조.",
+    "updated_at": "2026-04-13",
+    "usage": "stage12_heading_tokens.py --profile <source_family_key>"
+  },
+
+  "iacs_ur": {
+    "name": "IACS Unified Requirements",
+    "authority": "IACS",
+    "doc_types": ["UR"],
+    "grammar_version": "iacs_ur_z_v01",
+
+    "heading_recognition": {
+      "description": "마크다운 # 기반 + Z-prefix/번호 체계 혼용",
+      "patterns": [
+        {
+          "id": "md_heading",
+          "regex": "^(#{1,6})\\s+(.+)$",
+          "description": "표준 마크다운 헤딩 (#~######)",
+          "priority": 1
+        },
+        {
+          "id": "z_prefix_section",
+          "regex": "^#{2,4}\\s+(Z\\d+(?:\\.\\d+)*)\\s+(.+)$",
+          "description": "Z-prefix 섹션 (Z3.1, Z10.3.2 등)",
+          "priority": 2,
+          "extract": {"section_number": "$1", "title": "$2"}
+        },
+        {
+          "id": "numbered_section",
+          "regex": "^#{2,4}\\s+(\\d+(?:\\.\\d+)*)\\s+(.+)$",
+          "description": "순수 번호 섹션 (1., 1.1, 2.3.1 등)",
+          "priority": 3,
+          "extract": {"section_number": "$1", "title": "$2"}
+        }
+      ],
+      "exclude_patterns": [
+        {
+          "id": "code_block",
+          "description": "``` 또는 ~~~ 펜스 코드 블록 내부",
+          "fence_markers": ["```", "~~~"]
+        },
+        {
+          "id": "html_comment",
+          "regex": "^<!--.*-->$",
+          "description": "HTML 주석 줄 (markdownlint-disable 등)"
+        }
+      ]
+    },
+
+    "level_mapping": {
+      "description": "마크다운 레벨 → IACS 계층명 매핑",
+      "map": {
+        "1": "Document",
+        "2": "Section",
+        "3": "Paragraph",
+        "4": "Sub-paragraph",
+        "5": "Sub-sub-paragraph",
+        "6": "Sub-sub-sub-paragraph"
+      }
+    },
+
+    "normalization_rules": [
+      {
+        "id": "preamble_revision",
+        "description": "L1 헤딩 직후 (Rev.N YYYY) 형식의 개정 이력 블록은 헤딩이 아닌 preamble",
+        "regex": "^\\((?:Rev\\.?\\s*\\d+|Corr\\.?\\s*\\d+).*\\)$"
+      },
+      {
+        "id": "contents_toc",
+        "description": "## CONTENTS 또는 ## Table of Contents 하위는 TOC 영역. 헤딩으로 파싱하되 토큰 측정 시 주의",
+        "regex": "^#{2}\\s+(?:CONTENTS|Table of Contents)$"
+      },
+      {
+        "id": "end_of_document",
+        "description": "'End of Document' 줄은 헤딩이 아님",
+        "regex": "^End of Document$"
+      },
+      {
+        "id": "footnotes_notes",
+        "description": "Footnotes:, Notes: 로 시작하는 블록은 본문 일부, 별도 헤딩 아님",
+        "regex": "^(?:Footnotes?|Notes?):"
+      }
+    ],
+
+    "document_boundary": {
+      "rule": "1 File = 1 Document",
+      "multi_doc_action": "escalate_to_user"
+    },
+
+    "known_issues": [
+      {
+        "issue": "L1 헤딩에 문서번호(Z1, Z11 등)가 없는 경우 있음 (긴 제목만 존재)",
+        "affected": ["ur_z1", "ur_z11"],
+        "resolution": "파일명에서 문서번호 추출하여 DocumentKey 생성"
+      },
+      {
+        "issue": "TOC + 본문에 동일 제목 헤딩 중복",
+        "affected": ["ur_z20", "ur_z27"],
+        "resolution": "양쪽 모두 헤딩으로 파싱. 토큰 측정에 영향 없음"
+      },
+      {
+        "issue": "Deleted 문서 (1~10줄): 헤딩 1개 또는 0개",
+        "affected": ["ur_z2", "ur_z4", "ur_z5", "ur_z12", "ur_z22", "ur_z10_6"],
+        "resolution": "단일 헤딩으로 처리, Merge WU 후보"
+      }
+    ],
+
+    "stats": {
+      "last_run": "2026-04-13",
+      "documents_processed": 35,
+      "source": "UR_Z_md",
+      "total_headings": 1444,
+      "total_tokens": 326208,
+      "token_range": {"min": 10, "max": 49004, "avg": 9320},
+      "max_heading_depth": 6
+    }
+  }
+}
