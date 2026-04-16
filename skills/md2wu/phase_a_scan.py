@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import heading_tokens as ht
 
 
-WORKROOT = Path("/mnt/c/shared_wk/ontology_iacs/skill_md2wu")
+WORKROOT = Path("/home/kimghw/ontology_iacs/skill_md2wu")
 
 
 def slug(s: str) -> str:

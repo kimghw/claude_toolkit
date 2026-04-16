@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 
-WORKROOT = Path("/mnt/c/shared_wk/ontology_iacs/skill_md2wu")
+WORKROOT = Path("/home/kimghw/ontology_iacs/skill_md2wu")
 STALE_THRESHOLD_HOURS = 4
 
 
@@ -108,24 +108,36 @@ def main():
         for name in stale_removed[:10]:
             print(f"  - {name}")
 
-    # B-0 skip: check global item_index.json (none exists yet).
-    # Schema: item_to_wu[item_id] is either str (legacy single wu_key) or
-    # list[str] (current, supports split WUs mapping one item to multiple WUs).
+    # B-0 skip (SKILL.md §session-queue §5):
+    #   item_id in item_index.json
+    #   + all mapped wu_keys have non-empty wu-{wu_key}__pre__content.md
+    #   + all mapped wu_keys appear in that scope's corpus-{scope}__pre__manifest.json
+    # The per-WU meta JSON is absorbed into the manifest (F2/T5) and is not
+    # promoted to the global workroot, so we must not require it here.
     item_index_candidates = sorted(WORKROOT.glob("corpus-*__pre__item_index.json"))
     skipped_items = set()
     for p in item_index_candidates:
         with open(p) as f:
             idx = json.load(f)
+        scope = idx.get("corpus_scope")
+        manifest_wu_keys = set()
+        if scope:
+            mpath = WORKROOT / f"corpus-{scope}__pre__manifest.json"
+            if mpath.exists():
+                try:
+                    m = json.loads(mpath.read_text(encoding="utf-8"))
+                    manifest_wu_keys = {w.get("wu_key") for w in m.get("work_units", [])}
+                except (json.JSONDecodeError, OSError):
+                    manifest_wu_keys = set()
         for item_id, wu_keys in idx.get("item_to_wu", {}).items():
             keys = [wu_keys] if isinstance(wu_keys, str) else list(wu_keys)
             if not keys:
                 continue
             all_ok = True
             for wk in keys:
-                meta = WORKROOT / f"wu-{wk}__pre__meta.json"
                 cont = WORKROOT / f"wu-{wk}__pre__content.md"
-                if not (meta.exists() and meta.stat().st_size > 0
-                        and cont.exists() and cont.stat().st_size > 0):
+                if not (cont.exists() and cont.stat().st_size > 0
+                        and wk in manifest_wu_keys):
                     all_ok = False
                     break
             if all_ok:

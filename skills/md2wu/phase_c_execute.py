@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-WORKROOT = Path("/mnt/c/shared_wk/ontology_iacs/skill_md2wu")
+WORKROOT = Path("/home/kimghw/ontology_iacs/skill_md2wu")
 CHUNK_MAX = 32_000
 CHUNK_EXCEPTION = 48_000  # 1.5x
 WU_MIN = 16_000
@@ -358,12 +358,15 @@ def main():
             "risk": "Negligible — token counts may differ by 1 at heading boundaries",
         })
 
-    # Session-local publish (write wu-*__pre__meta.json + content.md into session out/)
+    # Session-local intermediate: write wu-*__pre__meta.json + content.md into session out/.
+    # The meta JSON is a session-scoped checkpoint only and is NOT copied to the
+    # global workroot. Its contents are absorbed into the manifest's work_units[]
+    # entries at publishing time (user directive + SSOT: no per-WU meta.json
+    # duplicates alongside manifest).
     for meta, content in wus:
         meta_path = out_dir / f"wu-{meta['wu_key']}__pre__meta.json"
         content_path = out_dir / f"wu-{meta['wu_key']}__pre__content.md"
         meta["output_files"] = [
-            f"skill_md2wu/wu-{meta['wu_key']}__pre__meta.json",
             f"skill_md2wu/wu-{meta['wu_key']}__pre__content.md",
         ]
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -385,16 +388,14 @@ def main():
         series_key = f"ur_{letter}"
         wus_by_series.setdefault(series_key, []).append((meta, content))
 
-    # Publishing step: atomic mv wu-*.meta.json and content.md to WORKROOT
+    # Publishing step: copy ONLY content.md to WORKROOT. Per-WU meta is absorbed
+    # into the manifest below (F2), so no per-WU meta file is published globally.
     published_files = []
     for meta, content in wus:
-        src_meta = out_dir / f"wu-{meta['wu_key']}__pre__meta.json"
         src_cont = out_dir / f"wu-{meta['wu_key']}__pre__content.md"
-        dst_meta = WORKROOT / f"wu-{meta['wu_key']}__pre__meta.json"
         dst_cont = WORKROOT / f"wu-{meta['wu_key']}__pre__content.md"
-        shutil.copy2(str(src_meta), str(dst_meta))
         shutil.copy2(str(src_cont), str(dst_cont))
-        published_files.extend([dst_meta, dst_cont])
+        published_files.append(dst_cont)
 
     # Per-series corpus manifest + issue_gate + item_index.
     # Ordering within each scope: manifest → issue_gate → item_index (last, atomic).
@@ -402,11 +403,16 @@ def main():
     # it points to are already on disk (WU files are copied above at 389-397).
     for series_key, group_wus in wus_by_series.items():
         scope = f"iacs_ur_{series_key.replace('ur_', '')}"
+        # Top-level carries corpus-common meta exactly once (SSOT). Per-WU entries
+        # below carry only fields that actually vary per WU.
         manifest = {
             "corpus_scope": scope,
             "source_family": "iacs_ur",
             "authority": AUTHORITY,
             "doc_type": DOC_TYPE,
+            "language": LANGUAGE,
+            "grammar_version": GRAMMAR_VERSION,
+            "measure_method": "tiktoken",
             "series": series_key,
             "session_id": session_id,
             "batch_id": claimed["batch_id"],
@@ -417,10 +423,13 @@ def main():
                 {
                     "wu_key": m["wu_key"],
                     "wu_type": m["wu_type"],
+                    # Full constituent_docs objects (doc_instance_key, document_key,
+                    # start_line, end_line, est_tokens, heading_range). Absorbed
+                    # from per-WU meta so no separate wu-*__pre__meta.json exists.
+                    "constituent_docs": m["constituent_docs"],
                     "est_tokens_total": m["est_tokens_total"],
+                    "chunk_keys": m["chunk_keys"],
                     "status": m["status"],
-                    "constituent_docs": [c["doc_instance_key"] for c in m["constituent_docs"]],
-                    "meta_file": f"wu-{m['wu_key']}__pre__meta.json",
                     "content_file": f"wu-{m['wu_key']}__pre__content.md",
                 }
                 for m, _ in group_wus

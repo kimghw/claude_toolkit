@@ -179,7 +179,7 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 | Split | `{item_id}_wu{NNN}` | `iacs_ur_z10_4_rev18_en_wu001` |
 | Merged | `{authority}_{doc_type}_merge_{short_hash}` (SHA-256 앞 8자) | `iacs_ur_merge_a3f7c2b1` |
 
-**산출물:** `wu-{wu_key}__pre__meta.json` (세션 로컬 중간본은 `out/` 하위, publishing 후 전역 경로로 승격)
+**산출물:** 세션 로컬 중간본 `out/wu-{wu_key}__pre__meta.json`. publishing 단계에서 **파일로 전역 승격되지 않고** `corpus-{scope}__pre__manifest.json`의 `work_units[]`로 흡수된다.
 
 ### Stage 7 — 이슈 게이트 및 매니페스트 확정
 
@@ -252,7 +252,7 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 
 #### B-0. 스킵 판정 ([session-queue §5](../session-queue/SKILL.md))
 1. 전역 경로의 `corpus-{scope}__pre__item_index.json`을 로드한다 (없으면 초기 실행으로 간주, 스킵 없음).
-2. `item_index.json`의 매핑 키(`item_id`)에 해당 item이 존재하고, 매핑이 가리키는 **모든** `wu_key`에 대해 `wu-{wu_key}__pre__meta.json` · `wu-{wu_key}__pre__content.md` 두 파일이 모두 존재하며 0바이트가 아닐 때 본 실행에서 제외한다 (하나라도 누락이면 미처리로 간주).
+2. `item_index.json`의 매핑 키(`item_id`)에 해당 item이 존재하고, 매핑이 가리키는 **모든** `wu_key`에 대해 `wu-{wu_key}__pre__content.md` 파일이 존재하며 0바이트가 아니고, 해당 scope의 `corpus-{scope}__pre__manifest.json`의 `work_units[]`에 동일 `wu_key`가 등재되어 있을 때 본 실행에서 제외한다 (하나라도 누락이면 미처리로 간주).
 3. `item_index.json`은 Merged WU·Split WU 포함 모든 WU 유형에 대해 `item_id → [wu_keys]` (list) 관계를 명시한다. Merged WU(복수 item → 단일 WU), Split WU(단일 item → 복수 WU) 모두 정확히 감지된다. 하위 호환: 레거시 `item_id → wu_key` (string) 매핑도 단일 원소 리스트로 해석한다.
 4. 스킵된 item의 락 파일은 건드리지 않는다 (다른 세션이 이미 보유 중일 수 있음).
 
@@ -313,7 +313,7 @@ Phase B 진입 전에 Stage 1의 메타데이터로 **모든 item에 provisional
 | `cost` 단위 | 토큰 수 (`cost_tokens`, tiktoken `cl100k_base` 또는 `char_approx` 폴백) |
 | `batch_capacity` | **기본 600K 토큰** — 사용자/메모리(feedback) 오버라이드 가능 (예: 200K) |
 | `session_capacity` | `batch_capacity`와 동일 (한 세션 = 1 배치). 락 점유 타이밍 = Phase B-4 직후 |
-| 스킵 판정 | `corpus-{scope}__pre__item_index.json`의 `item_id` 키 존재 + 매핑된 **모든** `wu_key`에 대해 `wu-{wu_key}__pre__meta.json` · `wu-{wu_key}__pre__content.md` 존재·비영 (Merged/Split WU 포함 모든 WU 유형 일관 판정; 레거시 string 매핑도 허용) |
+| 스킵 판정 | `corpus-{scope}__pre__item_index.json`의 `item_id` 키 존재 + 매핑된 **모든** `wu_key`에 대해 `wu-{wu_key}__pre__content.md` 존재·비영 + 해당 scope의 `corpus-{scope}__pre__manifest.json` `work_units[]`에 동일 `wu_key` 등재 (Merged/Split WU 포함 모든 WU 유형 일관 판정; 레거시 string 매핑도 허용) |
 | `<caller_dirs>` | `scan/`, `plans/`, `parts/`, `out/`, `assets/`, `logs/` (모두 `sessions/<session_id>/` 하위) |
 | 보고 채널 | 표준 사용자 보고 + `agent_report.md` (모호 판정·처리 결과 append) |
 
@@ -375,9 +375,9 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 | # | 산출물 | 파일명 패턴 | 설명 |
 |:---:|:---|:---|:---|
 | F1 | **WU 콘텐츠** | `wu-{wu_key}__pre__content.md` | 실제 원문 텍스트 (WU별 1개 파일) |
-| F2 | **PRE 매니페스트** | `corpus-{authority}_{doc_type}_{series}__pre__manifest.json` | 다운스트림 단일 진입점 (WU 목록·상태·토큰) |
+| F2 | **PRE 매니페스트 (통합 메타)** | `corpus-{authority}_{doc_type}_{series}__pre__manifest.json` | 다운스트림 단일 진입점. corpus 공통 메타(`authority`/`doc_type`/`language`/`grammar_version`/`measure_method`/`generated_at`)를 top-level에 한 번만 기록하고, 각 WU의 전체 메타(`wu_type`, `constituent_docs` 전체 객체, `chunk_keys`, `status`, `content_file`)를 `work_units[]` 안에 흡수한다. **WU별 개별 `wu-*__pre__meta.json` 파일은 전역 경로에 두지 않는다** (사용자 지시·SSOT 원칙). |
 | F3 | **이슈 게이트 보고** | `corpus-{authority}_{doc_type}_{series}__md2wu__issue_gate_report.json` | `threshold_issues` (토큰 초과/미달) + `judgments` (LLM 판정 이력) |
-| F4 | **Item 인덱스** | `corpus-{scope}__pre__item_index.json` | `{item_id: [wu_keys]}` 매핑 (list — Merged/Split WU 모두 지원; 레거시 string 호환). Phase B-0 스킵 판정 근거. publishing 단계에서 WU 메타의 `constituent_docs[].doc_instance_key`를 수집하여 `setdefault(...).append(wu_key)`로 생성, atomic rename(`.tmp → 최종`)으로 기록 — 타 산출물(WU/매니페스트/이슈게이트) 뒤에 마지막으로 커밋하여 부분 publishing 상태가 스킵 판정에 노출되지 않도록 보장 |
+| F4 | **Item 인덱스** | `corpus-{scope}__pre__item_index.json` | `{item_id: [wu_keys]}` 매핑 (list — Merged/Split WU 모두 지원; 레거시 string 호환). Phase B-0 스킵 판정 근거. publishing 단계에서 WU 메타의 `constituent_docs[].doc_instance_key`를 수집하여 `setdefault(...).append(wu_key)`로 생성, atomic rename(`.tmp → 최종`)으로 기록 — 타 산출물(WU content.md·매니페스트·이슈게이트) 뒤에 마지막으로 커밋하여 부분 publishing 상태가 스킵 판정에 노출되지 않도록 보장 |
 
 ### 중간 산출물
 
@@ -388,9 +388,9 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 | T1 | 헤딩·청크 통합 JSON | `parts/doc_parts.json` | 세션 내 전체 item의 `{headings, chunk_plan}`을 단일 JSON으로 통합 저장. Phase A가 headings를 채우고, Phase C가 claim한 item의 chunk_plan을 같은 파일에 덮어쓴다. |
 | T3 | Source Family 보고 | `out/corpus-{authority}_{doc_type}_{series}__md2wu__source_family_report.md` | 탐지 결과 및 승인 이력 |
 | T4 | 분류 결과 | `out/corpus-{authority}_{doc_type}_{series}__md2wu__classification_result.json` | Authority·DocType·Heading Level |
-| T5 | WU 메타데이터 | `out/wu-{wu_key}__pre__meta.json` | WU 구성·토큰·상태 (개별 JSON, `{wu_key}`는 standalone=`{item_id}` / split=`{item_id}_wu{NNN}` / merged=`{authority}_{doc_type}_merge_{hash}`) |
+| T5 | WU 중간 메타 | `out/wu-{wu_key}__pre__meta.json` | **세션 로컬 전용** 중간본. WU 구성·토큰·상태 (개별 JSON, `{wu_key}`는 standalone=`{item_id}` / split=`{item_id}_wu{NNN}` / merged=`{authority}_{doc_type}_merge_{hash}`). publishing 시 manifest.work_units[]로 흡수되며 전역 경로에 개별 파일로 승격되지 않는다. |
 
-> `<terminal_phase> = publishing` 시 T5의 `wu-*__pre__meta.json`과 최종 콘텐츠(`wu-*__pre__content.md`)를 전역 경로(`skill_md2wu/`)로 원자 `mv` 한다.
+> `<terminal_phase> = publishing` 시 **콘텐츠 `wu-*__pre__content.md`만** 전역 경로(`skill_md2wu/`)로 원자 `mv` 한다. T5의 메타는 manifest로 흡수되며 세션 로컬에 남고 §7 정리 시 삭제된다.
 
 ### 세션 산출물
 
@@ -455,25 +455,42 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 
 ---
 
-## WU 메타데이터 스키마
+## PRE 매니페스트 스키마 (통합 메타)
 
-`wu-{wu_key}__pre__meta.json`:
+`corpus-{authority}_{doc_type}_{series}__pre__manifest.json` — WU 개별 `wu-*__pre__meta.json` 파일을 만들지 않고, 그 모든 내용을 이 매니페스트 안에 흡수한다.
+
+### Top-level (corpus 공통 메타)
+
+| 필드 | 타입 | 설명 |
+|:---|:---|:---|
+| `corpus_scope` | string | `{authority}_{doc_type}_{series}` (예: `iacs_ur_z`) |
+| `source_family` | string | 예: `iacs_ur` |
+| `authority` | string | 발행 기관 (예: `IACS`) |
+| `doc_type` | string | 문서 카테고리 (예: `UR`) |
+| `language` | string | 언어 코드 (예: `en`) |
+| `grammar_version` | string | 헤딩 문법 버전 |
+| `measure_method` | string | `tiktoken` 또는 `char_approx` |
+| `series` | string | 예: `ur_z` |
+| `session_id` | string | 생성 세션 ID |
+| `batch_id` | string | 생성 배치 ID |
+| `generated_at` | string | ISO 8601 타임스탬프 |
+| `wu_count` | int | `work_units` 길이 |
+| `est_tokens_total` | int | 모든 WU 토큰 합 |
+| `work_units[]` | array | 아래 WU 항목 스키마 |
+
+### WU 항목 스키마 (`work_units[]`)
 
 | 필드 | 타입 | 설명 |
 |:---|:---|:---|
 | `wu_key` | string | WU_Key |
 | `wu_type` | string | `standalone` / `split` / `merged` |
-| `authority` | string | 발행 기관 |
-| `doc_type` | string | 문서 카테고리 |
-| `language` | string | 언어 코드 |
-| `grammar_version` | string | 헤딩 문법 버전 |
-| `measure_method` | string | `tiktoken` 또는 `char_approx` |
-| `constituent_docs[]` | array | 구성 문서 목록 (doc_instance_key, document_key, start_line, end_line, est_tokens, heading_range) |
+| `constituent_docs[]` | array | 구성 문서 전체 객체 (`doc_instance_key`, `document_key`, `start_line`, `end_line`, `est_tokens`, `heading_range`) |
 | `est_tokens_total` | int | WU 전체 토큰 수 |
 | `chunk_keys[]` | array | 포함된 ChunkKey 목록 |
 | `status` | string | `planned` → `processed` / `proceeded` / `revised` / `aborted` |
-| `output_files[]` | array | 생성된 산출물 경로 |
-| `created_at` | string | ISO 8601 타임스탬프 |
+| `content_file` | string | 실제 콘텐츠 파일 경로 (`wu-{wu_key}__pre__content.md`) |
+
+> corpus 공통 필드(`authority`, `doc_type`, `language`, `grammar_version`, `measure_method`, `created_at` 등)는 top-level에 한 번만 기록하고 `work_units[]`에서는 반복하지 않는다 (CLAUDE.md "중복된 내용은 지양" + SSOT).
 
 ---
 
