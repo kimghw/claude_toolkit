@@ -2,7 +2,7 @@
 """md2wu Stage 7: Issue gate + Manifest generation.
 
 Usage:
-    python stage7_manifest.py <tsv_dir> [--chunk-max 32000]
+    python manifest.py <tsv_dir> [--chunk-max 32000]
 
 Reads all wu-*__pre__meta.json files, checks issue triggers,
 updates WU status, and generates corpus__pre__manifest.json.

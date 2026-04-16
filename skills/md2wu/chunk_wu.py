@@ -2,7 +2,7 @@
 """md2wu Stage 5-6: Chunk planning + Work Unit packing.
 
 Usage:
-    python stage56_chunk_wu.py <tsv_dir> [--chunk-max 32000] [--wu-min 16000]
+    python chunk_wu.py <tsv_dir> [--chunk-max 32000] [--wu-min 16000]
 
 Reads all doc-*__heading__structure.tsv files from <tsv_dir>,
 generates chunk plans and WU meta files.

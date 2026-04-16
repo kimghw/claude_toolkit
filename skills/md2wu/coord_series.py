@@ -6,10 +6,10 @@ Usage:
 
 Steps per series:
   1. Acquire lock skill_root/queue/locks/iacs_ur_<s>.lock (O_CREAT|O_EXCL)
-  2. Phase A: parse filename → keys → run stage12 per file → TSV in temp/pre/<s>/
+  2. Phase A: parse filename → keys → run heading_tokens per file → TSV in temp/pre/<s>/
   3. Phase B: build single batch (all series files fit ≤600K)
-  4. Phase C/S5-6: stage56_chunk_wu.py
-  5. Phase C/S7: stage7_manifest.py
+  4. Phase C/S5-6: chunk_wu.py
+  5. Phase C/S7: manifest.py
   6. Extract WU content from source files based on WU meta
   7. Add iacs_ur_ prefix to wu/manifest/issue_gate filenames; move to skill_root
   8. Release lock
@@ -200,7 +200,7 @@ def main():
         sys.exit(2)
 
     try:
-        # 2. Phase A: stage12 per file
+        # 2. Phase A: heading_tokens per file
         files = sorted(src_dir.glob("*.md"))
         if not files:
             print(f"NO_FILES in {src_dir}", file=sys.stderr)
@@ -212,12 +212,12 @@ def main():
             doc_key, dik = parse_filename(f.name)
             try:
                 r = subprocess.run(
-                    [PYTHON, str(SKILL_DIR / "stage12_heading_tokens.py"),
+                    [PYTHON, str(SKILL_DIR / "heading_tokens.py"),
                      str(f), dik, doc_key, str(temp_dir)],
                     capture_output=True, text=True, check=True
                 )
             except subprocess.CalledProcessError as e:
-                print(f"STAGE12_FAIL {f.name}: {e.stderr}", file=sys.stderr)
+                print(f"HEADING_TOKENS_FAIL {f.name}: {e.stderr}", file=sys.stderr)
                 continue
             tsv_path = temp_dir / f"doc-{dik}__heading__structure.tsv"
             scan_results.append({
@@ -241,10 +241,10 @@ def main():
         scan_idx_path = sessions_dir / f"scan_index_{series}.json"
         scan_idx_path.write_text(json.dumps(scan_index, indent=2, ensure_ascii=False))
 
-        # 3-4. Phase B/C: stage56
+        # 3-4. Phase B/C: chunk_wu
         update_lock(lock_path, session_id, "processing")
         r = subprocess.run(
-            [PYTHON, str(SKILL_DIR / "stage56_chunk_wu.py"),
+            [PYTHON, str(SKILL_DIR / "chunk_wu.py"),
              str(temp_dir),
              "--chunk-max", str(args.chunk_max),
              "--wu-min", str(args.wu_min),
@@ -255,9 +255,9 @@ def main():
         )
         print(r.stdout)
 
-        # 5. Phase C/S7: stage7
+        # 5. Phase C/S7: manifest
         r = subprocess.run(
-            [PYTHON, str(SKILL_DIR / "stage7_manifest.py"),
+            [PYTHON, str(SKILL_DIR / "manifest.py"),
              str(temp_dir),
              "--chunk-max", str(args.chunk_max),
              "--source-dir", str(src_dir),

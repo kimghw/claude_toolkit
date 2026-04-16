@@ -2,10 +2,10 @@
 """md2wu Stage 1-2: Heading extraction + Token measurement.
 
 Usage:
-    python stage12_heading_tokens.py <md_file> <doc_instance_key> <document_key> <output_dir>
+    python heading_tokens.py <md_file> <doc_instance_key> <document_key> <output_dir>
 
 Example:
-    python stage12_heading_tokens.py /path/to/ur-z3rev8.md ur_z3_rev8_en ur_z3 /path/to/results/temp/pre
+    python heading_tokens.py /path/to/ur-z3rev8.md ur_z3_rev8_en ur_z3 /path/to/results/temp/pre
 
 Output:
     doc-{doc_instance_key}__heading__structure.tsv
@@ -92,21 +92,35 @@ def measure_tokens(headings, lines, encode_fn):
     return headings
 
 
+ADDITIVITY_TOLERANCE = 2
+
+
 def verify_additivity(headings):
-    """Verify parent.Exclusive + sum(children.Inclusive) = parent.Inclusive."""
+    """Verify parent.Exclusive + sum(children.Inclusive) = parent.Inclusive.
+
+    |diff| <= ADDITIVITY_TOLERANCE → warning (BPE boundary artifact, non-functional).
+    |diff| >  ADDITIVITY_TOLERANCE → error.
+    Returns (errors, warnings).
+    """
     errors = []
-    hmap = {h["heading_id"]: h for h in headings}
+    warnings = []
     for h in headings:
         children = [c for c in headings if c["parent_id"] == h["heading_id"]]
-        if children:
-            expected = h["est_tokens_exclusive"] + sum(c["est_tokens_inclusive"] for c in children)
-            if expected != h["est_tokens_inclusive"]:
-                errors.append(
-                    f"{h['heading_id']}: excl({h['est_tokens_exclusive']}) + "
-                    f"children_incl({sum(c['est_tokens_inclusive'] for c in children)}) = "
-                    f"{expected} != incl({h['est_tokens_inclusive']})"
-                )
-    return errors
+        if not children:
+            continue
+        children_sum = sum(c["est_tokens_inclusive"] for c in children)
+        expected = h["est_tokens_exclusive"] + children_sum
+        diff = expected - h["est_tokens_inclusive"]
+        if diff == 0:
+            continue
+        msg = (f"{h['heading_id']}: excl({h['est_tokens_exclusive']}) + "
+               f"children_incl({children_sum}) = {expected} != "
+               f"incl({h['est_tokens_inclusive']}) [diff={diff:+d}]")
+        if abs(diff) <= ADDITIVITY_TOLERANCE:
+            warnings.append(msg)
+        else:
+            errors.append(msg)
+    return errors, warnings
 
 
 def main():
@@ -155,15 +169,19 @@ def main():
         headings = measure_tokens(headings, lines, encode_fn)
 
     # Verify additivity
-    errors = verify_additivity(headings)
+    errors, warnings = verify_additivity(headings)
     if errors:
         print(f"ADDITIVITY ERRORS in {doc_instance_key}:")
         for e in errors:
             print(f"  {e}")
-    else:
+    if warnings:
+        print(f"ADDITIVITY WARNINGS in {doc_instance_key} (|diff|<={ADDITIVITY_TOLERANCE}):")
+        for w in warnings:
+            print(f"  {w}")
+    if not errors:
         print(f"OK: {doc_instance_key} — {len(headings)} headings, "
               f"{headings[0]['est_tokens_inclusive']} tokens, "
-              f"additivity PASS, measure={measure_method}")
+              f"additivity PASS ({len(warnings)} warnings), measure={measure_method}")
 
     # Write TSV
     os.makedirs(output_dir, exist_ok=True)

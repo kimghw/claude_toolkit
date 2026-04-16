@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Source Family별 헤딩 추출 정규화 프로파일. md2wu Stage 1-2에서 참조.",
     "updated_at": "2026-04-13",
-    "usage": "stage12_heading_tokens.py --profile <source_family_key>"
+    "usage": "heading_tokens.py --profile <source_family_key>"
   },
 
   "iacs_ur": {
