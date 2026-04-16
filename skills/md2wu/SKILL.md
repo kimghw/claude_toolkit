@@ -19,6 +19,26 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 
 ---
 
+## 용어 (Terminology)
+
+본 스킬은 [session-queue](../session-queue/SKILL.md)의 규약을 채택한다. 키 간 포함 관계는 다음과 같다.
+
+| 용어 | 정의 | 예시 | 역할 |
+|:---|:---|:---|:---|
+| `item_id` | **락·배치의 최소 단위**. 1 MD 파일 = 1 item. | `iacs_ur_z10_3_rev21_en` | session-queue `<item_id>` |
+| `doc_instance_key` | item 식별자의 정본. `item_id`와 동일 값. | 위와 동일 | 파일 고유 ID |
+| `source_family` | 헤딩 패턴·문서 구조 규칙을 공유하는 분류 단위 (Stage 3에서 확정). | `iacs_ur`, `iacs_ui`, `imo_solas` | 배치 그룹화 1차 키 |
+| `series` | 같은 `source_family` 내부에서 번호 연속성을 갖는 문서 묶음. | `Z10` (Z10.1~Z10.11), `E26`, `S-series` | 배치 그룹화 2차 키 |
+| `series_order` | series 내부 문서 정렬용 키 (서브번호·revision 순). | `Z10.1 rev21 < Z10.2 rev18 < Z10.3` | 병합·배치 내부 정렬 |
+| `corpus_scope` | 보고·집계용 상위 범위 키. **락 단위가 아님**. | `iacs_ur_z` (UR 중 Z 시리즈 전체) | manifest·통계 집계 |
+| `document_key` | revision 제거된 논리 문서 키(필요 시 별도 필드). | `iacs_ur_z10_3` | WU 내부 참조용 |
+
+- `doc_key`라는 약칭은 사용하지 않는다.
+- `item_id`는 파일명 안전 문자(`[A-Za-z0-9._-]`)만 사용한다.
+- `source_family` → `series` → `item`은 상위→하위 포함 관계이며, 락은 **item 단위**로만 건다.
+
+---
+
 ## 입력
 
 | # | 항목 | 필수 | 설명 |
@@ -142,8 +162,9 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 #### 병합 제약 조건
 
 동일한 WU로 병합 가능 조건 (모두 충족):
+- 동일 `source_family`, 동일 `series_group`(또는 series 없음)
 - 동일 `Authority`, `DocType`, 언어, `grammar_version`, `measure_method`
-- 병합 순서: DocumentKey ASCII 사전식
+- 병합 순서: `series_order` 우선, 동률 시 `doc_instance_key` 보조 정렬
 - 합계 토큰 ≤ 상한 (초과 시 현재 WU 닫고 새 WU)
 - 마지막 WU가 하한 미만이어도 그대로 수용 (강제 병합 금지)
 
@@ -181,7 +202,7 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 |:---|:---|
 | `stage` | 발생 단계 (S1, S3, S5 등) |
 | `severity` | `HIGH` / `MED` / `LOW` |
-| `category` | 판정 유형 (doc_key_extraction, revision_extraction, chunk_split_decision, merge_ordering 등) |
+| `category` | 판정 유형 (item_id_extraction, revision_extraction, source_family_assign, chunk_split_decision, merge_ordering 등) |
 | `target` | 대상 파일/문서 |
 | `ambiguity` | 애매했던 점 |
 | `decision` | 어떻게 결정했는지 + 근거 |
@@ -211,7 +232,7 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 모든 `.md` 파일에 대해 S1-2(헤딩 추출 + 토큰 측정)를 무조건 전량 실행한다.
 
 - 입력: 폴더 경로
-- 출력: `skill_md2wu/queue/sessions/<session_id>/scan_index.json` + TSV 파일
+- 출력: `skill_md2wu/queue/sessions/<session_id>/scan/scan_index.json` + `parts/<item_id>__heading__structure.tsv`
 - 락 불필요 — TSV만 생성하고 충돌 위험 없음
 
 `scan_index.json` 스키마:
@@ -220,30 +241,81 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 |:---|:---|:---|
 | `scan_id` | string | ISO 8601 타임스탬프 |
 | `source_dir` | string | 입력 폴더 절대 경로 |
-| `files[]` | array | 파일별 `{doc_instance_key, filepath, total_tokens, heading_count, tsv_path}` |
+| `files[]` | array | 파일별 `{item_id, filepath, cost_tokens, heading_count, source_family, series_group, series_order, tsv_path}` (`item_id` = `doc_instance_key`) |
 | `total_tokens` | int | 전체 토큰 합계 |
 | `total_files` | int | 전체 파일 수 |
 
-### Phase B — 배치 계획
+### Phase B — 배치 계획 (Source Family 우선 · Series 연속성 · NFD)
 
-`scan_index.json`을 읽고 **600K 토큰 기준**으로 파일을 배치로 묶는다.
+`scan_index.json`의 item 목록을 받아 **`batch_capacity` 이하**로 배치를 구성한다. 기본값은 `600K` 토큰(사용자/메모리 오버라이드 가능; 200K 등).
 
-1. 파일을 `doc_key` ASCII 순으로 정렬
-2. 순서대로 누적 토큰 합산
-3. 누적 > 600K이면 새 배치 시작
-4. 배치 계획을 `batch_plan.json`에 기록
+#### B-0. 스킵 판정 ([session-queue §5](../session-queue/SKILL.md))
+item별 최종 산출물(`wu-*__pre__meta.json` + `wu-*__pre__content.md`)이 모두 존재하고 0바이트가 아니면 본 실행에서 제외한다. 스킵된 item의 락 파일은 건드리지 않는다.
+
+#### B-1. Source Family 사전 확정
+Phase B 진입 전에 Stage 1의 메타데이터로 **모든 item에 provisional `source_family`를 할당**한다. 미확정 family가 있으면 Stage 3 승인 절차를 **먼저** 수행한 뒤 Phase B로 진입한다 (배치 내 family 혼합 방지).
+
+#### B-2. 그룹화 및 정렬 (우선순위)
+1. **1차 그룹**: `source_family` — 서로 다른 family는 같은 배치에 넣지 않는다.
+2. **2차 그룹**: `series_group` — 같은 family 내부에서 series별로 묶는다.
+3. **series 내부 정렬**: `series_order` 오름차순 (연속성 유지). series 없는 item은 `doc_instance_key` 보조 정렬.
+4. **그룹 간 배치 선택 우선순위**: 큰 그룹(합산 `cost_tokens` 큰 순)부터 배치화 ([session-queue §6.3](../session-queue/SKILL.md) 큰 아이템 우선 원칙).
+
+#### B-3. NFD 패킹 ([session-queue §6.2](../session-queue/SKILL.md))
+각 `(source_family, series_group)` 단위로 Next-Fit Decreasing을 적용:
+1. 현재 배치 합 + `item.cost_tokens` ≤ `batch_capacity` → 현재 배치에 추가.
+2. 초과 시 현재 배치를 닫고 새 배치를 연다.
+3. **series 연속성 우선**: 예산에 여유가 있는 한 같은 series는 같은 배치에 유지. 예산을 초과하는 시점에만 series 경계에서 분리한다.
+4. 단일 item이 `batch_capacity`를 초과하면 [session-queue §6.1](../session-queue/SKILL.md) 규칙에 따라 사용자에게 물리 분할을 요청하고 이번 실행에서 제외한다.
+
+#### B-4. 세션 점유 (multi-session handoff, [session-queue §6.6](../session-queue/SKILL.md))
+- `session_capacity` 기본값은 `batch_capacity`와 동일 (**한 세션 = 1 배치**).
+- 첫 배치(우선순위 가장 높은 family·series)만 락 claim하고 나머지 배치는 **락·pending 모두 건드리지 않고** 보존한다.
+- 보존된 배치는 `batch_plan.json`에 기록하되 `status: "reserved_for_other_session"`으로 표기한다.
+- 다른 세션이 기동되면 §5 스킵 판정 후 남은 item을 같은 방식으로 가져간다.
+
+#### B-5. 산출물
+`batch_plan.json`에 기록:
+
+| 필드 | 설명 |
+|:---|:---|
+| `batch_id` | `B{NNN}` 3자리 zero-pad |
+| `source_family` | 배치의 단일 family |
+| `series_groups[]` | 배치에 포함된 series 키 목록 |
+| `items[]` | `{item_id, cost_tokens, series_order, filepath}` |
+| `cost_total` | 배치 합산 토큰 |
+| `status` | `claimed` / `reserved_for_other_session` |
 
 ### Phase C — 배치 단위 실행 (S3-7)
 
-각 배치를 순차적으로 처리한다.
+이번 세션이 claim한 단일 배치를 순차적으로 처리한다.
 
-- S3: Source Family 탐지 — 첫 배치에서만 사용자 승인, 이후 배치는 기확정 SF 재사용
-- S4-6: 분류 → 청크 → WU 패킹
-- S7: 이슈 게이트 + WU .md 출력 + 매니페스트
+- S3: Source Family — 이미 Phase B-1에서 확정되었으므로 본 단계는 기확정 SF 재사용 (신규 후보 추가 발생 시 사용자 재승인).
+- S4-6: 분류 → 청크 → WU 패킹.
+- S7: 이슈 게이트 + WU .md 출력 + 매니페스트.
 
 ---
 
-## 글로벌 락 + 세션 관리
+## session-queue §9 통합 선언
+
+본 스킬은 [session-queue](../session-queue/SKILL.md)를 채택하며, §9 통합 체크리스트 항목을 다음 값으로 선언한다.
+
+| 항목 | 값 |
+|:---|:---|
+| `workroot` | `skill_md2wu/` (프로젝트 루트 기준) |
+| `item_id` | `doc_instance_key` — **1 MD 파일 = 1 item** |
+| 작업 파일 스키마 | `pending/<item_id>/task.json`: `{item_id, filepath, cost_tokens, source_family, series_group, series_order, retry_count, expected_outputs[]}` |
+| `cost` 단위 | 토큰 수 (`cost_tokens`, tiktoken `cl100k_base` 또는 `char_approx` 폴백) |
+| `batch_capacity` | **기본 600K 토큰** — 사용자/메모리(feedback) 오버라이드 가능 (예: 200K) |
+| `total_capacity` | 미사용 (session_capacity로 통제) |
+| `session_capacity` | `batch_capacity`와 동일 (한 세션 = 1 배치). 락 점유 타이밍 = Phase B-4 직후 |
+| 스킵 판정 | `wu-<item_id>*__pre__meta.json` + `wu-<item_id>*__pre__content.md` 모두 존재하고 0바이트 아님 |
+| `<terminal_phase>` | `publishing` — 세션 로컬 산출물을 전역 경로로 승격하는 직전 단계 |
+| `<caller_dirs>` | `scan/`, `plans/`, `parts/`, `out/`, `assets/`, `logs/` (모두 `sessions/<session_id>/` 하위) |
+| §7 정리 경로 | `queue/sessions/<session_id>/{pending,working,done}/<item_id>/` 및 `<caller_dirs>/<item_id>*` |
+| 패킹 전략 | Phase B-2 그룹화 → Phase B-3 NFD (cost 내림차순, family·series 경계 존중) |
+| 보고 채널 | 표준 사용자 보고 + `agent_report.md` (모호 판정·처리 결과 append) |
+| 크래시 복구 | session-queue §3.5 잔존 패턴표를 따른다 (자동 회수 금지) |
 
 ### 디렉토리 구조
 
@@ -251,39 +323,43 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 skill_md2wu/
 ├── queue/
 │   ├── locks/
-│   │   └── <corpus_scope>.lock              ← 글로벌 락 (corpus 단위)
+│   │   └── <item_id>.lock                   ← 글로벌 락 (item = 1 MD 파일 단위)
 │   └── sessions/
-│       └── <session_id>/
-│           ├── scan_index.json              ← Phase A 결과
-│           ├── batch_plan.json              ← Phase B 결과
-│           └── batches/
-│               └── batch_{NNN}/
-│                   └── status.json          ← 배치 상태
-├── temp/pre/                                ← 중간 산출물
-│   ├── doc-*__heading__structure.tsv
-│   ├── doc-*__heading__chunk_plan.json
-│   ├── wu-*__pre__meta.json
-│   └── corpus-*__md2wu__*.json/.md
-├── wu-*__pre__content.md                    ← 최종 WU 콘텐츠
-├── corpus-*__pre__manifest.json             ← 최종 매니페스트
-└── corpus-*__md2wu__issue_gate_report.json  ← 최종 이슈 보고
+│       └── <session_id>/                    ← 세션 로컬 (격리)
+│           ├── pending/<item_id>/task.json
+│           ├── working/<item_id>/
+│           ├── done/<item_id>/
+│           ├── failed/<item_id>/
+│           ├── scan/scan_index.json         ← Phase A 결과
+│           ├── plans/batch_plan.json        ← Phase B 결과
+│           ├── parts/<item_id>__*.tsv       ← 중간 TSV·chunk_plan
+│           ├── out/<item_id>__*.json        ← 중간 WU 메타·분류 결과
+│           ├── assets/<item_id>/            ← 아이템별 보조 산출물
+│           └── logs/                        ← 배치·이슈 로그
+├── wu-<item_id>__pre__content.md            ← 최종 WU 콘텐츠 (publishing 이후 전역)
+├── corpus-<scope>__pre__manifest.json       ← 최종 매니페스트
+└── corpus-<scope>__md2wu__issue_gate_report.json
 ```
+
+중간 산출물은 모두 `sessions/<session_id>/<caller_dirs>/` 하위에 두고, `<terminal_phase> = publishing` 진입 시에만 최종 산출물(`wu-*`, `corpus-*__pre__manifest.json`)을 전역 경로로 원자 `mv` 한다.
 
 ### 락 메커니즘
 
 | 항목 | 값 |
 |:---|:---|
-| **락 단위** | `corpus_scope` (예: `iacs_ur_z`) — 같은 문서군 동시 실행 방지 |
-| **파일** | `skill_md2wu/queue/locks/<corpus_scope>.lock` |
-| **생성** | `open(path, "x")` (POSIX O_CREAT\|O_EXCL, atomic) |
-| **내용** | `{"owner":"<session_id>","state":"<state>","claimed_at":"<ISO8601>"}` |
-| **상태** | `scanning` → `batching` → `processing` → (unlink 또는 `failed`) |
-| **상태 갱신** | atomic rename (`tmp → lock`) |
-| **해제** | `os.unlink(lock)` — 모든 배치 완료 후 |
-| **stale 임계** | 4시간 (mtime 기준) |
-| **실패 시** | `state=failed`로 갱신, 파일 유지, 자동 접수 금지 |
+| **락 단위** | `item_id`(=`doc_instance_key`) — **1 MD 파일 = 1 락** |
+| **파일** | `skill_md2wu/queue/locks/<item_id>.lock` (단일 정규 파일) |
+| **생성** | `open(path, "x")` (POSIX O_CREAT\|O_EXCL, atomic) — [session-queue §3.1](../session-queue/SKILL.md) |
+| **내용** | `{"owner":"<session_id>","state":"<state>","claimed_at":"<ISO8601>","updated_at":"<ISO8601>"}` (개행 없는 단일 JSON) |
+| **상태 전이** | `pending → working → publishing → (unlink)` 또는 `→ failed` |
+| **상태 갱신** | atomic replace (`tmp → rename`) — [session-queue §3.2](../session-queue/SKILL.md) |
+| **해제** | `os.unlink(lock)` — §7 정리 순서(큐·자산 → 락) 엄수 |
+| **stale 임계** | 4시간 (mtime 기준), 자동 탈취 금지 |
+| **실패 시** | `state=failed`로 갱신, 파일 유지, 사용자 수동 복구 |
 
-**멀티 세션 분담 (session-queue §6.6)**: 입력에 복수 `corpus_scope`가 존재하는 경우, 락 단위가 corpus이므로 **한 세션은 자기 `session_capacity`(예: 처리할 corpus 개수 또는 누적 토큰 상한) 내에서만 corpus 락을 점유**하고, 초과분 corpus는 락·pending 모두 건드리지 않고 원본 상태로 보존해 다른 세션/계정이 가져갈 수 있게 한다. 같은 corpus의 Phase B 배치는 분할 불가(단일 세션이 corpus 단위로 전체 처리).
+### 멀티 세션 분담
+
+입력 범위에 여러 source_family·series가 있더라도, **한 세션은 Phase B에서 선택된 단일 배치의 item들에만 락을 건다**. 나머지 item은 락·pending 모두 건드리지 않고 원본 상태로 보존되어 다른 세션/계정이 §5 스킵 판정 후 가져갈 수 있다. 락은 item 단위이므로 `EEXIST`로 자동 충돌 회피된다.
 
 ### 세션 ID
 
@@ -308,25 +384,30 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 
 ### 중간 산출물
 
-저장 경로: `skill_md2wu/temp/pre/` — 파이프라인 완료 후 삭제 가능
+저장 경로: `skill_md2wu/queue/sessions/<session_id>/<caller_dirs>/` — `<terminal_phase>` 진입 후 §7 정리 단계에서 삭제
 
-| # | 산출물 | 파일명 패턴 | 설명 |
+| # | 산출물 | 파일명 패턴 (세션 로컬) | 설명 |
 |:---:|:---|:---|:---|
-| T1 | 헤딩 구조 TSV | `doc-{doc_instance_key}__heading__structure.tsv` | 헤딩 트리 + 토큰 측정 |
-| T2 | 청크 계획 | `doc-{doc_instance_key}__heading__chunk_plan.json` | 청크 경계·토큰·분할 방식 |
-| T3 | Source Family 보고 | `corpus-{authority}_{doc_type}_{series}__md2wu__source_family_report.md` | 탐지 결과 및 승인 이력 |
-| T4 | 분류 결과 | `corpus-{authority}_{doc_type}_{series}__md2wu__classification_result.json` | Authority·DocType·Heading Level |
-| T5 | WU 메타데이터 | `wu-{wu_key}__pre__meta.json` | WU 구성·토큰·상태 (개별 JSON) |
+| T1 | 헤딩 구조 TSV | `parts/<item_id>__heading__structure.tsv` | 헤딩 트리 + 토큰 측정 |
+| T2 | 청크 계획 | `parts/<item_id>__heading__chunk_plan.json` | 청크 경계·토큰·분할 방식 |
+| T3 | Source Family 보고 | `out/corpus-{authority}_{doc_type}_{series}__md2wu__source_family_report.md` | 탐지 결과 및 승인 이력 |
+| T4 | 분류 결과 | `out/corpus-{authority}_{doc_type}_{series}__md2wu__classification_result.json` | Authority·DocType·Heading Level |
+| T5 | WU 메타데이터 | `out/wu-<item_id>__pre__meta.json` | WU 구성·토큰·상태 (개별 JSON) |
+
+> `<terminal_phase> = publishing` 시 T5의 `wu-*__pre__meta.json`과 최종 콘텐츠(`wu-*__pre__content.md`)를 전역 경로(`skill_md2wu/`)로 원자 `mv` 한다.
 
 ### 세션 산출물
 
 저장 경로: `skill_md2wu/queue/sessions/<session_id>/`
 
-| # | 산출물 | 파일명 | 설명 |
+| # | 산출물 | 상대 경로 | 설명 |
 |:---:|:---|:---|:---|
-| S1 | 스캔 인덱스 | `scan_index.json` | Phase A 결과 (전체 파일 토큰 목록) |
-| S2 | 배치 계획 | `batch_plan.json` | Phase B 결과 (600K 단위 배치 분할) |
-| S3 | 배치 상태 | `batches/batch_{NNN}/status.json` | 배치별 진행 상태 |
+| S1 | 스캔 인덱스 | `scan/scan_index.json` | Phase A 결과 (전체 파일 + source_family/series 포함) |
+| S2 | 배치 계획 | `plans/batch_plan.json` | Phase B 결과 (`batch_capacity` 단위 배치 분할) |
+| S3 | 작업 파일 | `pending/<item_id>/task.json` | item 단위 작업 명세 |
+| S4 | 중간 TSV·chunk_plan | `parts/<item_id>__*.tsv`, `parts/<item_id>__*.json` | Stage 1·2·5 결과 |
+| S5 | WU 중간 메타 | `out/<item_id>__*.json` | Stage 4·6 결과 |
+| S6 | 배치 상태 | `logs/batch_{NNN}__status.json` | 배치별 진행 로그 |
 
 ---
 
@@ -403,6 +484,8 @@ Heading_ID	Level	Start_Line	End_Line	Title	Parent_ID	Est_Tokens_Inclusive	Est_To
 
 ## 토큰 임계값 (기본값)
 
+### 문서·청크·WU 레벨
+
 | 파라미터 | 값 | 용도 |
 |:---|:---|:---|
 | `chunk_max` (Upper Bound) | 32K | 청크 분할 상한 |
@@ -410,7 +493,15 @@ Heading_ID	Level	Start_Line	End_Line	Title	Parent_ID	Est_Tokens_Inclusive	Est_To
 | `wu_range` | 16K–32K | Standalone WU 목표 범위 |
 | `wu_lower` | 16K | Merge 후보 기준 |
 
-> 임계값은 `shared/thresholds.yaml` 정본을 참조한다. 사용자가 `revise` 시 조정 가능.
+### 배치·세션 레벨 (Phase B)
+
+| 파라미터 | 기본값 | 용도 |
+|:---|:---|:---|
+| `batch_capacity` | **600K** | 단일 배치의 합산 `cost_tokens` 상한 ([session-queue §6.1](../session-queue/SKILL.md)). 사용자/메모리 오버라이드 가능 (예: 200K). |
+| `session_capacity` | `= batch_capacity` | 한 세션이 점유하는 최대 cost. 기본적으로 배치 용량과 동일 → **한 세션 = 1 배치**. |
+| `stale_threshold` | 4h | 락 스테일 판정 mtime 임계. |
+
+> 임계값은 `shared/thresholds.yaml` 정본을 참조한다. 사용자가 `revise` 시 조정 가능. 사용자가 세션 예산을 직접 지정(예: 200K)하면 `batch_capacity`·`session_capacity` 모두 그 값으로 덮어쓴다.
 
 ---
 
