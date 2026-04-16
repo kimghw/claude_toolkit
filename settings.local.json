@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Agent(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "NotebookEdit(*)",
+      "TodoWrite(*)",
+      "Edit(/.claude/skills/pdf2md/**)",
+      "mcp__codex__codex",
+      "mcp__gemini__ask-gemini",
+      "Skill(git)",
+      "Skill(git:*)",
+      "Edit(/.claude/skills/md2wu/**)",
+      "Bash(rm -r /home/kimghw/ontology_iacs/.claude/commands)",
+      "Bash(ln -s /home/kimghw/claude_toolkit/commands /home/kimghw/ontology_iacs/.claude/commands)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Read(/home/kimghw/claude_toolkit/**)",
+      "Write(/home/kimghw/claude_toolkit/**)",
+      "Edit(/home/kimghw/claude_toolkit/**)",
+      "Glob(/home/kimghw/claude_toolkit/**)",
+      "Grep(/home/kimghw/claude_toolkit/**)"
+    ],
+    "additionalDirectories": [
+      "/home/kimghw/ontology_iacs/.claude/commands",
+      "/home/kimghw/claude_toolkit"
+    ]
+  }
+}
