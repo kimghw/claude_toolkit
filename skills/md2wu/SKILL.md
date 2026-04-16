@@ -283,6 +283,8 @@ skill_md2wu/
 | **stale 임계** | 4시간 (mtime 기준) |
 | **실패 시** | `state=failed`로 갱신, 파일 유지, 자동 접수 금지 |
 
+**멀티 세션 분담 (session-queue §6.6)**: 입력에 복수 `corpus_scope`가 존재하는 경우, 락 단위가 corpus이므로 **한 세션은 자기 `session_capacity`(예: 처리할 corpus 개수 또는 누적 토큰 상한) 내에서만 corpus 락을 점유**하고, 초과분 corpus는 락·pending 모두 건드리지 않고 원본 상태로 보존해 다른 세션/계정이 가져갈 수 있게 한다. 같은 corpus의 Phase B 배치는 분할 불가(단일 세션이 corpus 단위로 전체 처리).
+
 ### 세션 ID
 
 Claude Code 세션 UUID 사용 (`~/.claude/projects/<project>/<session_id>.jsonl`에서 추출).

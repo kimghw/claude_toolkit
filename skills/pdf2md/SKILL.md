@@ -123,7 +123,7 @@ description: PDF를 구조화된 마크다운으로 변환. 원문 텍스트 무
      - **실패** (`EEXIST`, 다른 오케스트레이터가 점유 중): 해당 파일을 스킵하고 사용자에게 보고. 다음 파일로 진행.
      - **성공**: 즉시 `{"owner":"<session_id>","state":"pending","claimed_at":"<ISO8601>"}` 단일 라인 JSON을 **한 번의 `write()`로 기록**하고 파일 핸들을 닫는다.
    - 파일당 `ceil(total/50)`개 구간을 계산(이미 절차 1에서 검증된 값, 40 이하).
-   - 점유 성공 파일들의 파트 수를 누적하여 **총 파트 수 ≤ 100**을 유지한다. 초과하면 이후 파일은 락을 잡지 않고 사용자에게 승인 요청.
+   - 점유 성공 파일들의 파트 수를 누적하여 **총 파트 수 ≤ 100**(= `session_capacity`)을 유지한다. 초과 예정이면 해당 파일과 그 이후 파일은 **락 claim을 시도하지 않고, pending 적재도 하지 않은 채** 다음 세션/계정이 가져갈 수 있도록 원본 상태로 보존한다(session-queue §6.6). 사용자에게는 "N개 파일을 다른 세션용으로 보존함"을 보고한다.
    - 각 구간에 대해 **조건 플래그**를 확정한다(3.3 참조).
    - 각 구간마다 **담당 페이지 추출물**을 사전 생성하여 `<workroot>/queue/sessions/<session_id>/pdf_parts/<input>__partNN.pdf`에 저장.
      - **권장 (qpdf)**: `qpdf <input>.pdf --pages <input>.pdf <start>-<end> -- <workroot>/queue/sessions/<session_id>/pdf_parts/<input>__partNN.pdf`
