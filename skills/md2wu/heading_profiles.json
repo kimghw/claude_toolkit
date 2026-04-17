@@ -116,5 +116,227 @@
       "token_range": {"min": 10, "max": 49004, "avg": 9320},
       "max_heading_depth": 6
     }
+  },
+
+  "iacs_ui": {
+    "name": "IACS Unified Interpretations",
+    "authority": "IACS",
+    "doc_types": ["UI"],
+    "grammar_version": "iacs_ui_v01",
+
+    "heading_recognition": {
+      "description": "마크다운 # 기반. UR과 공통. L1 = 문서 제목(예: '# CC1 ...'), L2 = Interpretation/NOTE 등 섹션",
+      "patterns": [
+        {
+          "id": "md_heading",
+          "regex": "^(#{1,6})\\s+(.+)$",
+          "description": "표준 마크다운 헤딩 (#~######)",
+          "priority": 1
+        },
+        {
+          "id": "ui_prefix_title",
+          "regex": "^#\\s+((?:CC|COLREG|FTP|GC|GF|HSC|LL|MODU|MPC|PASSUB|SC|TM)\\d+(?:\\.\\d+)*)\\s*(.*)$",
+          "description": "UI L1 제목 (CC1, SC123, MPC104 등)",
+          "priority": 2,
+          "extract": {"document_code": "$1", "title": "$2"}
+        }
+      ],
+      "exclude_patterns": [
+        {
+          "id": "code_block",
+          "description": "``` 또는 ~~~ 펜스 코드 블록 내부",
+          "fence_markers": ["```", "~~~"]
+        },
+        {
+          "id": "html_comment",
+          "regex": "^<!--.*-->$",
+          "description": "HTML 주석 줄 (markdownlint-disable 등)"
+        }
+      ]
+    },
+
+    "level_mapping": {
+      "description": "마크다운 레벨 → IACS 계층명 매핑 (UR과 동일)",
+      "map": {
+        "1": "Document",
+        "2": "Section",
+        "3": "Paragraph",
+        "4": "Sub-paragraph",
+        "5": "Sub-sub-paragraph",
+        "6": "Sub-sub-sub-paragraph"
+      }
+    },
+
+    "normalization_rules": [
+      {
+        "id": "preamble_revision",
+        "description": "L1 헤딩 직후 (Rev.N YYYY) 형식의 개정 이력 블록은 헤딩이 아닌 preamble",
+        "regex": "^\\((?:Rev\\.?\\s*\\d+|Corr\\.?\\s*\\d+).*\\)$"
+      },
+      {
+        "id": "end_of_document",
+        "description": "'End of Document' 줄은 헤딩이 아님",
+        "regex": "^End of Document$"
+      },
+      {
+        "id": "footnotes_notes",
+        "description": "Footnotes:, Notes: 로 시작하는 블록은 본문 일부, 별도 헤딩 아님",
+        "regex": "^(?:Footnotes?|Notes?):"
+      }
+    ],
+
+    "document_boundary": {
+      "rule": "1 File = 1 Document",
+      "multi_doc_action": "escalate_to_user",
+      "note": "일부 UI 문서(예: MPC104)는 본문에 MPC/LL/HSC 등 여러 코드 번호를 병기하나, 파일 경로(UI_MPC_md/)를 단일 정본으로 간주"
+    },
+
+    "series_keys": {
+      "description": "UI의 series는 각 IMO/IACS 코드별 서브 코퍼스. 파일 경로 UI_<CODE>_md/로 결정",
+      "active": ["ui_cc", "ui_colreg", "ui_ftp", "ui_gc", "ui_gf", "ui_hsc", "ui_ll", "ui_modu", "ui_mpc", "ui_passub", "ui_sc", "ui_tm"],
+      "del_policy": "del/withdrawn 문서는 series에 '_del' 접미사를 붙여 별도 Merged WU로 묶는다"
+    },
+
+    "known_issues": [
+      {
+        "issue": "파일명에 'UI-' 접두어가 없는 경우 존재 (SC123-, hsc-code7 등)",
+        "affected": ["ui_sc", "ui_hsc"],
+        "resolution": "부모 디렉토리명(UI_<CODE>_md/)으로 series 확정 후 파일명에서 숫자만 추출"
+      },
+      {
+        "issue": "Deleted/Withdrawn 문서가 다수 존재 (수십 건)",
+        "affected": ["ui_cc_del", "ui_sc_del", "ui_mpc_del", "ui_colreg_del", "ui_ftp_del", "ui_ll_del", "ui_hsc_del", "ui_modu_del", "ui_gf_del", "ui_gc_del", "ui_passub_del"],
+        "resolution": "series key에 '_del' 접미사를 붙여 active 문서와 분리된 Merged WU로 묶음"
+      }
+    ]
+  },
+
+  "iacs_pr": {
+    "name": "IACS Procedural Requirements",
+    "authority": "IACS",
+    "doc_types": ["PR"],
+    "grammar_version": "iacs_pr_v01",
+
+    "heading_recognition": {
+      "description": "마크다운 # 기반. L1 = 문서 제목(예: '# No.6 Procedure ...', '# PR 42 Procedure ...', '# Annexes to PR1A ...'), L2 = 섹션(1 Purpose, Section A, TABLE OF CONTENTS 등)",
+      "patterns": [
+        {
+          "id": "md_heading",
+          "regex": "^(#{1,6})\\s+(.+)$",
+          "description": "표준 마크다운 헤딩 (#~######)",
+          "priority": 1
+        },
+        {
+          "id": "pr_no_title",
+          "regex": "^#\\s+No\\.?\\s*(\\d+[A-Za-z]?)\\s*(.*)$",
+          "description": "PR L1 제목 변형: '# No.6 ...', '# No. 25 ...'",
+          "priority": 2,
+          "extract": {"pr_number": "$1", "title": "$2"}
+        },
+        {
+          "id": "pr_code_title",
+          "regex": "^#\\s+PR\\s*-?\\s*(\\d+[A-Za-z]?)\\s*(.*)$",
+          "description": "PR L1 제목 변형: '# PR 42 ...', '# PR-42 ...', '# PR1C Addendum ...'",
+          "priority": 3,
+          "extract": {"pr_number": "$1", "title": "$2"}
+        }
+      ],
+      "exclude_patterns": [
+        {
+          "id": "code_block",
+          "description": "``` 또는 ~~~ 펜스 코드 블록 내부",
+          "fence_markers": ["```", "~~~"]
+        },
+        {
+          "id": "html_comment",
+          "regex": "^<!--.*-->$",
+          "description": "HTML 주석 줄 (markdownlint-disable 등)"
+        }
+      ]
+    },
+
+    "level_mapping": {
+      "description": "마크다운 레벨 → IACS 계층명 매핑 (UR/UI와 동일)",
+      "map": {
+        "1": "Document",
+        "2": "Section",
+        "3": "Paragraph",
+        "4": "Sub-paragraph",
+        "5": "Sub-sub-paragraph",
+        "6": "Sub-sub-sub-paragraph"
+      }
+    },
+
+    "normalization_rules": [
+      {
+        "id": "preamble_revision",
+        "description": "L1 헤딩 직후 (Rev.N Month YYYY) 형식의 개정 이력 블록은 헤딩이 아닌 preamble",
+        "regex": "^\\((?:Rev\\.?\\s*\\d+|Corr\\.?\\s*\\d+|Addendum\\s*Rev\\.?\\s*\\d+|Withdrawn).*\\)$"
+      },
+      {
+        "id": "end_of_document",
+        "description": "'End of Document' 줄은 헤딩이 아님",
+        "regex": "^End of Document$"
+      },
+      {
+        "id": "deleted_withdrawn_marker",
+        "description": "'Deleted YYYY' 또는 'Withdrawn from ...' 본문 마커는 헤딩이 아닌 상태 표시",
+        "regex": "^(?:Deleted|Withdrawn).*"
+      },
+      {
+        "id": "footnotes_notes",
+        "description": "Footnotes:, Notes: 로 시작하는 블록은 본문 일부, 별도 헤딩 아님",
+        "regex": "^(?:Footnotes?|Notes?):"
+      }
+    ],
+
+    "document_boundary": {
+      "rule": "1 File = 1 Document",
+      "multi_doc_action": "escalate_to_user",
+      "note": "Contact Details 문서는 여러 PR을 공용으로 참조하나, 파일 단위로 단일 문서로 간주"
+    },
+
+    "series_keys": {
+      "description": "PR의 series는 단일 시리즈 `pr` 하나. del/withdrawn 문서는 `pr_del`로 분리.",
+      "active": ["pr"],
+      "del_policy": "del/withdrawn 문서는 series를 `pr_del`로 부여해 별도 Merged WU로 묶는다"
+    },
+
+    "filename_patterns": {
+      "description": "48개 PR MD 파일의 파일명 변형과 item_id tail 규칙",
+      "rules": [
+        {"pattern": "PR-<N>-Rev.<X>-<MMM>-<YYYY>-CLN[-...]", "example": "PR-12-Rev.5-Nov-2024-CLN.md", "tail": "pr<N>_rev<X>_en"},
+        {"pattern": "PR<N>-Rev.<X>-...", "example": "PR9-Rev.6-Dec-2025-CLN.md", "tail": "pr<N>_rev<X>_en"},
+        {"pattern": "pr<N>rev<X>", "example": "pr6rev4.md", "tail": "pr<N>_rev<X>_en"},
+        {"pattern": "pr<N>corr<X>", "example": "pr16corr1.md", "tail": "pr<N>_corr<X>_en"},
+        {"pattern": "PR-<N><L>-Rev.<X>-...", "example": "PR-1B-Rev.8-Nov-2024-CLN.md", "tail": "pr<N><L>_rev<X>_en"},
+        {"pattern": "PR-<N><L>Rev.<X>...", "example": "PR-10BRev.1-Sep-2023CLN.md", "tail": "pr<N><L>_rev<X>_en"},
+        {"pattern": "PR-<N>-Annex-Rev.<X>-...", "example": "PR-1-Annex-Rev.6-Oct-2024-CLN.md", "tail": "pr<N>_annex_rev<X>_en"},
+        {"pattern": "PR-<N><L>-Add-Rev<X>-...", "example": "PR-1C-Add-Rev8-Withdrawn-Oct-2023.md", "tail": "pr<N><L>_add_rev<X>_en (series=pr_del)"},
+        {"pattern": "pr<N>-del-<MMM>-<YYYY>", "example": "pr25-del-mar-2009.md", "tail": "pr<N>_del_en (series=pr_del)"},
+        {"pattern": "pr_<NN>[<L>]_pdf<###>", "example": "pr_02a_pdf2657.md", "tail": "pr<N>[<L>]_en (revision from body preamble if available)"},
+        {"pattern": "Contact-Details-for-PR<N><L>...-<MMM>-<YYYY>", "example": "Contact-Details-for-PR1A-PR1B-PR1C-Jan-2026.md", "tail": "pr<N><L>_contact_<YYYYMM>_en"},
+        {"pattern": "PR-<N>-and-PR-<M>-Contact-details-<MMM>-<YYYY>", "example": "PR-17-and-PR-18-Contact-details-Mar-2026.md", "tail": "pr<N>_contact_<YYYYMM>_en"},
+        {"pattern": "PR-<N>-Contact-Details-<MMM>-<YYYY>", "example": "PR-23-Contact-Details-March-2026.md", "tail": "pr<N>_contact_<YYYYMM>_en"}
+      ]
+    },
+
+    "known_issues": [
+      {
+        "issue": "PDF 자동 변환 파일(pr_NN_pdf###.md)은 파일명에서 revision을 추출할 수 없음",
+        "affected": ["pr_02_pdf89", "pr_02a_pdf2657", "pr_02b_pdf2658", "pr_05_pdf91", "pr_08_pdf94", "pr_11_pdf97", "pr_14_pdf99", "pr_15_pdf100", "pr_22_pdf107", "pr_23_pdf108", "pr_26_pdf110", "pr_27_pdf112", "pr_29_pdf114", "pr_31_pdf559", "pr_33_pdf116", "pr_34_pdf388"],
+        "resolution": "L1 헤딩 이후 preamble 영역(최대 20줄)에서 '(Rev.N ...)' 패턴의 최대 N을 스캔해 revision 추정. 실패 시 revision=None."
+      },
+      {
+        "issue": "Deleted/Withdrawn 문서 존재",
+        "affected": ["pr_02_pdf89 (PR2 deleted)", "pr_02a_pdf2657 (PR2A)", "pr_02b_pdf2658 (PR2B)", "pr25-del-mar-2009", "PR-1C-Add-Rev8-Withdrawn-Oct-2023", "pr_15_pdf100 (Deleted Mar 2009)"],
+        "resolution": "body preamble에서 'Deleted' 또는 'Withdrawn' 마커 감지 시 series=pr_del로 분리"
+      },
+      {
+        "issue": "PR17/18 공유 Contact, PR1A/1B/1C 공유 Contact 등 다중 PR 공용 annex 존재",
+        "affected": ["Contact-Details-for-PR1A-PR1B-PR1C-Jan-2026", "PR-17-and-PR-18-Contact-details-Mar-2026"],
+        "resolution": "파일명에서 첫 번째 PR 번호를 기준으로 item_id 구성. 연관 PR 목록은 judgments로 기록."
+      }
+    ]
   }
 }

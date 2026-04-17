@@ -108,40 +108,31 @@ def main():
         for name in stale_removed[:10]:
             print(f"  - {name}")
 
-    # B-0 skip (SKILL.md §session-queue §5):
-    #   item_id in item_index.json
-    #   + all mapped wu_keys have non-empty wu-{wu_key}__pre__content.md
-    #   + all mapped wu_keys appear in that scope's corpus-{scope}__pre__manifest.json
-    # The per-WU meta JSON is absorbed into the manifest (F2/T5) and is not
-    # promoted to the global workroot, so we must not require it here.
-    item_index_candidates = sorted(WORKROOT.glob("corpus-*__pre__item_index.json"))
+    # B-0 skip (SKILL.md §Phase B-0 + §"전역 발행 정책"):
+    #   Source of truth = merge_index.json (corpora[scope].item_to_wu).
+    #   Skip when every mapped wu_key has a non-empty wu-{wu_key}__pre__content.md.
+    #   Per-scope manifest/item_index are session-local (audit) and MUST NOT
+    #   participate in skip detection.
     skipped_items = set()
-    for p in item_index_candidates:
-        with open(p) as f:
-            idx = json.load(f)
-        scope = idx.get("corpus_scope")
-        manifest_wu_keys = set()
-        if scope:
-            mpath = WORKROOT / f"corpus-{scope}__pre__manifest.json"
-            if mpath.exists():
-                try:
-                    m = json.loads(mpath.read_text(encoding="utf-8"))
-                    manifest_wu_keys = {w.get("wu_key") for w in m.get("work_units", [])}
-                except (json.JSONDecodeError, OSError):
-                    manifest_wu_keys = set()
-        for item_id, wu_keys in idx.get("item_to_wu", {}).items():
-            keys = [wu_keys] if isinstance(wu_keys, str) else list(wu_keys)
-            if not keys:
-                continue
-            all_ok = True
-            for wk in keys:
-                cont = WORKROOT / f"wu-{wk}__pre__content.md"
-                if not (cont.exists() and cont.stat().st_size > 0
-                        and wk in manifest_wu_keys):
-                    all_ok = False
-                    break
-            if all_ok:
-                skipped_items.add(item_id)
+    merge_path = WORKROOT / "merge_index.json"
+    if merge_path.exists():
+        try:
+            merge_idx = json.loads(merge_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            merge_idx = {}
+        for scope, block in (merge_idx.get("corpora") or {}).items():
+            for item_id, wu_keys in (block.get("item_to_wu") or {}).items():
+                keys = [wu_keys] if isinstance(wu_keys, str) else list(wu_keys)
+                if not keys:
+                    continue
+                all_ok = True
+                for wk in keys:
+                    cont = WORKROOT / f"wu-{wk}__pre__content.md"
+                    if not (cont.exists() and cont.stat().st_size > 0):
+                        all_ok = False
+                        break
+                if all_ok:
+                    skipped_items.add(item_id)
 
     # Filter + group by (source_family, series)
     groups = {}

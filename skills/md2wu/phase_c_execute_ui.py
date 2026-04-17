@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Phase C — claim locks, run chunk/WU packing, emit WU content and manifest.
+"""Phase C for IACS UI — claim locks, chunk/WU packing, emit WU content + manifest.
 
-Usage: phase_c_execute.py <session_id>
+Usage: phase_c_execute_ui.py <session_id>
 
 Reads:
   queue/sessions/<session_id>/plans/batch_plan.json
@@ -9,13 +9,13 @@ Reads:
 Writes:
   queue/locks/<item_id>.lock                        (global, EEXIST atomic)
   queue/sessions/<session_id>/working/<item_id>/    (per-item working dir)
-  queue/sessions/<session_id>/out/<item_id>__*.json (WU meta)
+  queue/sessions/<session_id>/out/wu-<wu_key>__pre__{meta.json,content.md}
   queue/sessions/<session_id>/parts/doc_parts.json  (chunk_plan filled in-place)
-  Then publishes (SKILL.md §"전역 발행 정책" — two kinds only):
+  Publishes (SKILL.md §"전역 발행 정책"):
   skill_md2wu/wu-<wu_key>__pre__content.md
-  skill_md2wu/merge_index.json    (atomic rename, written LAST after all WU .md)
+  skill_md2wu/merge_index.json    (atomic rename, written LAST)
 
-  Session-local (T2/T5/T6 — audit only, NOT promoted to workroot):
+  Session-local (T2/T5 — audit only, NOT promoted):
   queue/sessions/<session_id>/out/corpus-<scope>__pre__manifest.json
   queue/sessions/<session_id>/out/corpus-<scope>__md2wu__issue_gate_report.json
 """
@@ -26,7 +26,6 @@ import os
 import shutil
 import sys
 import errno
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,18 +35,19 @@ CHUNK_MAX = 32_000
 CHUNK_EXCEPTION = 48_000  # 1.5x
 WU_MIN = 16_000
 AUTHORITY = "IACS"
-DOC_TYPE = "UR"
+DOC_TYPE = "UI"
 LANGUAGE = "en"
-GRAMMAR_VERSION = "iacs_ur_z_v01"
+GRAMMAR_VERSION = "iacs_ui_v01"
+SOURCE_FAMILY = "iacs_ui"
 
 
 sys.path.insert(0, str(WORKROOT.parent / ".claude/skills/md2wu"))
-import chunk_wu as cw  # reuse TSV parser + chunk planner
+import chunk_wu as cw  # reuse chunk planner
 
 
 def acquire_lock(lock_path: Path, session_id: str, item_id: str):
-    """Atomic O_CREAT|O_EXCL lock. If already held by same session (from Phase B),
-    reuse it; raise EEXIST only when a different session owns it."""
+    """Atomic O_CREAT|O_EXCL lock. If held by the same session, reuse it;
+    raise EEXIST only when another session owns it."""
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     body = {
         "session_id": session_id,
@@ -63,15 +63,12 @@ def acquire_lock(lock_path: Path, session_id: str, item_id: str):
             os.close(fd)
         return
     except FileExistsError:
-        # Lock exists — check ownership
         try:
             existing = json.loads(lock_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            # Empty or corrupt lock body → treat as foreign claim-in-progress
             raise OSError(errno.EEXIST, "lock exists with unparseable body")
         owner = existing.get("owner") or existing.get("session_id")
         if owner == session_id:
-            # Pre-owned by this session (e.g. Phase B claim). Reuse it.
             return
         raise OSError(errno.EEXIST, f"lock held by another session: {owner}")
 
@@ -105,7 +102,6 @@ def main():
     with open(plan_path) as f:
         plan = json.load(f)
 
-    # Select claimed batch
     claimed = next((b for b in plan["batches"] if b["status"] == "claimed"), None)
     if not claimed:
         print("No claimed batch found.")
@@ -115,7 +111,6 @@ def main():
     print(f"Claimed batch {claimed['batch_id']}: {len(items)} items, {claimed['cost_total']:,} tokens")
     print(f"Series: {claimed['series_keys']}")
 
-    # Acquire locks for all items
     locks_dir = WORKROOT / "queue" / "locks"
     acquired_locks = []
     lock_failures = []
@@ -138,22 +133,19 @@ def main():
         print("No locks acquired. Abort.")
         sys.exit(2)
 
-    # Move lock phase → working
     for it, lp in acquired_locks:
         update_lock(lp, "working", session_id, it["item_id"])
         (working_root / it["item_id"]).mkdir(parents=True, exist_ok=True)
 
-    # Load consolidated doc_parts.json (produced by Phase A)
     doc_parts_path = parts_dir / "doc_parts.json"
     with open(doc_parts_path, encoding="utf-8") as f:
         doc_parts = json.load(f)
     doc_parts_items = doc_parts["items"]
 
-    # Build doc_summaries + chunk plans
     now = now_iso()
     all_plans = {}
     doc_summaries = []
-    item_file_by_id = {it["item_id"]: it for it, _ in acquired_locks}
+    item_meta_by_id = {it["item_id"]: it for it, _ in acquired_locks}
     judgments = []
     threshold_issues = []
 
@@ -180,18 +172,16 @@ def main():
             "series_order": it["series_order"],
         })
 
-    # Persist chunk_plan back into the consolidated file
     with open(doc_parts_path, "w", encoding="utf-8") as f:
         json.dump(doc_parts, f, ensure_ascii=False, indent=2)
 
-    # Classify
     split_docs = [s for s in doc_summaries if s["total_tokens"] > CHUNK_EXCEPTION]
     standalone_docs = [s for s in doc_summaries if WU_MIN <= s["total_tokens"] <= CHUNK_EXCEPTION]
     merge_cands = [s for s in doc_summaries if s["total_tokens"] < WU_MIN]
 
     print(f"Docs: split={len(split_docs)}, standalone={len(standalone_docs)}, merge_cands={len(merge_cands)}")
 
-    wus = []  # list of (meta_dict, content_text)
+    wus = []  # list of (meta_dict, content_text, series_key)
 
     def read_lines(fp):
         with open(fp, encoding="utf-8", errors="replace") as f:
@@ -239,7 +229,7 @@ def main():
                 "output_files": [],
                 "created_at": now,
             }
-            wus.append((meta, content))
+            wus.append((meta, content, s["series"]))
 
     # Standalone WUs
     for s in standalone_docs:
@@ -271,9 +261,10 @@ def main():
             "output_files": [],
             "created_at": now,
         }
-        wus.append((meta, content))
+        wus.append((meta, content, s["series"]))
 
-    # Merge WUs — group per series, sort series_order
+    # Merge WUs — group per series (active/_del kept separate via series key),
+    # sort by series_order.
     merge_cands.sort(key=lambda x: (x["series"], tuple(x["series_order"]), x["doc_instance_key"]))
     merge_groups = []
     current = []
@@ -282,20 +273,20 @@ def main():
     for s in merge_cands:
         if current_series is not None and s["series"] != current_series:
             if current:
-                merge_groups.append(current)
+                merge_groups.append((current, current_series))
             current, current_tokens = [], 0
         if current_tokens + s["total_tokens"] > CHUNK_MAX and current:
-            merge_groups.append(current)
+            merge_groups.append((current, current_series))
             current, current_tokens = [], 0
         current.append(s)
         current_tokens += s["total_tokens"]
         current_series = s["series"]
     if current:
-        merge_groups.append(current)
+        merge_groups.append((current, current_series))
 
-    for group in merge_groups:
+    for group, group_series in merge_groups:
         keys_str = "+".join(s["doc_instance_key"] for s in group)
-        wu_key = f"iacs_ur_merge_{hashlib.sha256(keys_str.encode()).hexdigest()[:8]}"
+        wu_key = f"iacs_ui_merge_{hashlib.sha256(keys_str.encode()).hexdigest()[:8]}"
         constituent = []
         chunk_keys = []
         total = 0
@@ -340,14 +331,13 @@ def main():
             "output_files": [],
             "created_at": now,
         }
-        wus.append((meta, "".join(content_parts)))
+        wus.append((meta, "".join(content_parts), group_series))
 
-    # Record judgments (additivity ±1 tokenizer rounding)
     scan_path = session_dir / "scan" / "scan_index.json"
     with open(scan_path) as f:
         scan = json.load(f)
     for err in scan.get("additivity_errors", []):
-        if err["item"] not in item_file_by_id:
+        if err["item"] not in item_meta_by_id:
             continue
         judgments.append({
             "stage": "S2",
@@ -359,12 +349,7 @@ def main():
             "risk": "Negligible — token counts may differ by 1 at heading boundaries",
         })
 
-    # Session-local intermediate: write wu-*__pre__meta.json + content.md into session out/.
-    # The meta JSON is a session-scoped checkpoint only and is NOT copied to the
-    # global workroot. Its contents are absorbed into the manifest's work_units[]
-    # entries at publishing time (user directive + SSOT: no per-WU meta.json
-    # duplicates alongside manifest).
-    for meta, content in wus:
+    for meta, content, _series in wus:
         meta_path = out_dir / f"wu-{meta['wu_key']}__pre__meta.json"
         content_path = out_dir / f"wu-{meta['wu_key']}__pre__content.md"
         meta["output_files"] = [
@@ -373,42 +358,28 @@ def main():
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
         content_path.write_text(content, encoding="utf-8")
 
-    # Update lock phase → publishing
     for it, lp in acquired_locks:
         update_lock(lp, "publishing", session_id, it["item_id"])
 
-    # Scope for manifest: batch covers ur_s + ur_z. Publish per-series scope.
-    # Group WUs by series for per-series scope manifests.
+    # Group WUs by series (series already carried on each WU tuple)
     wus_by_series = {}
-    for meta, content in wus:
-        # Determine series from constituent_docs
-        first = meta["constituent_docs"][0]["doc_instance_key"]
-        # item_id prefix: iacs_ur_{letter}...
-        parts = first.split("_")
-        letter = parts[2][0] if len(parts) >= 3 else "?"
-        series_key = f"ur_{letter}"
+    for meta, content, series_key in wus:
         wus_by_series.setdefault(series_key, []).append((meta, content))
 
-    # Publishing step: copy ONLY content.md to WORKROOT. Per-WU meta is absorbed
-    # into the manifest below (F2), so no per-WU meta file is published globally.
-    published_files = []
-    for meta, content in wus:
+    # Publish content.md globally
+    for meta, content, _ in wus:
         src_cont = out_dir / f"wu-{meta['wu_key']}__pre__content.md"
         dst_cont = WORKROOT / f"wu-{meta['wu_key']}__pre__content.md"
         shutil.copy2(str(src_cont), str(dst_cont))
-        published_files.append(dst_cont)
 
-    # SKILL.md §"전역 발행 정책": only `wu-*__pre__content.md` and
-    # `merge_index.json` are globally published. Per-scope manifest / issue
-    # gate remain session-local (T2/T5, audit only). No per-scope item_index
-    # file — its mapping is absorbed into `merge_index.json.corpora[scope]`.
+    # Session-local manifest + issue gate per scope; global merge_index last.
     scope_to_item_to_wu: dict[str, dict[str, list[str]]] = {}
     for series_key, group_wus in wus_by_series.items():
-        scope = f"iacs_ur_{series_key.replace('ur_', '')}"
-        # T2 manifest → session out/
+        # scope = iacs_ui_{series_short}[_del]; strip leading "ui_"
+        scope = f"iacs_ui_{series_key[len('ui_'):]}"
         manifest = {
             "corpus_scope": scope,
-            "source_family": "iacs_ur",
+            "source_family": SOURCE_FAMILY,
             "authority": AUTHORITY,
             "doc_type": DOC_TYPE,
             "language": LANGUAGE,
@@ -439,7 +410,6 @@ def main():
             json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(str(manifest_tmp), str(manifest_path))
 
-        # T5 issue gate → session out/
         scope_issues = [i for i in threshold_issues
                         if any(i["wu_key"] == m["wu_key"] for m, _ in group_wus)]
         scope_judgments = [j for j in judgments
@@ -457,16 +427,13 @@ def main():
             json.dumps(igr, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(str(igr_tmp), str(igr_path))
 
-        # Collect per-scope item_to_wu for the global merge_index.json.
         item_to_wu: dict[str, list[str]] = {}
         for m, _ in group_wus:
             for c in m["constituent_docs"]:
                 item_to_wu.setdefault(c["doc_instance_key"], []).append(m["wu_key"])
         scope_to_item_to_wu[scope] = item_to_wu
 
-    # Global merge_index.json — written LAST after all wu-*__pre__content.md are
-    # on disk (SKILL.md §Phase B-0 skip detection source). Merge with existing
-    # corpora so other sessions' published scopes are preserved. Atomic rename.
+    # Global merge_index.json (last commit)
     merge_path = WORKROOT / "merge_index.json"
     if merge_path.exists():
         try:
@@ -487,23 +454,22 @@ def main():
         json.dumps(merge_payload, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(str(merge_tmp), str(merge_path))
 
-    # Terminal phase: release locks (unlink)
     for it, lp in acquired_locks:
         try:
             os.unlink(str(lp))
         except FileNotFoundError:
             pass
 
-    # Final summary
     print()
-    print("=== Phase C done ===")
+    print("=== Phase C (UI) done ===")
     print(f"WUs published: {len(wus)}")
     for series_key, group_wus in wus_by_series.items():
-        print(f"  {series_key}: {len(group_wus)} WUs ({sum(m['est_tokens_total'] for m, _ in group_wus):,} tokens)")
+        print(f"  {series_key}: {len(group_wus)} WUs "
+              f"({sum(m['est_tokens_total'] for m, _ in group_wus):,} tokens)")
     print(f"Threshold issues: {len(threshold_issues)}")
     print(f"Judgments: {len(judgments)}")
     print(f"Lock failures: {len(lock_failures)}")
-    print(f"Scopes published: {list(wus_by_series.keys())}")
+    print(f"Scopes published: {sorted(scope_to_item_to_wu.keys())}")
 
 
 if __name__ == "__main__":
