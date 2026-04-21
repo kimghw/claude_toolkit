@@ -1,6 +1,6 @@
 ---
 description: "kimghw/claude_toolkit와 현재 프로젝트 .claude/를 심볼릭 링크로 연결 (pull: 원본→로컬, promote: 로컬→원본, unlink: 로컬 링크 제거)"
-allowed-tools: Bash, Read, Glob
+allowed-tools: Bash, Read, Glob, AskUserQuestion
 ---
 
 # /link_toolkit 명령
@@ -33,12 +33,26 @@ allowed-tools: Bash, Read, Glob
    - 소비자 프로젝트의 `.claude/`는 일반적으로 소비자 `.gitignore`에 등록되어 소비자 레포에 커밋되지 않음을 전제로 함. (toolkit 원본 레포에서는 `.claude/`가 트래킹 대상.)
 
 2. **인자 해석**
-   - **인자 없음**: 원본 하위 구조와 로컬 `.claude/` 상태(실파일 vs 심볼릭)를 함께 제시하고, 어떤 항목을 어떤 모드로 처리할지 사용자 확인.
+   - **인자 없음**: **인터랙티브 선택 모드** (아래 2-1 참조) — `agents/`, `commands/`, `skills/` 하위 항목을 카테고리별로 나열하고 `AskUserQuestion`으로 선택받는다.
    - **`all`**: 최상위 3개(`agents`, `commands`, `skills`)를 `.claude/`에 디렉토리 단위로 **pull-link**.
    - **구체 경로**(예: `references`, `skills/pdf2md`, `commands/git.md`): 위 상태표에 따라 **모드 자동 판별**.
    - **여러 항목**: 공백으로 나열 가능 (예: `references skills/md2wu`). 각 항목 독립 처리.
    - **`unlink <경로> [<경로> ...]`**: 지정한 경로의 심볼릭 링크만 선택적으로 제거 (아래 5-1 참조).
    - **`unlink all`**: `.claude/` 하위에서 `$TOOLKIT/.claude/`를 가리키는 **모든** 심볼릭 링크를 일괄 제거.
+
+2-1. **인터랙티브 선택 모드 (인자 없음 기본 동작)**
+   - **폴더별 순차 질문**이 원칙: `agents/` → `commands/` → `skills/` 순서로 **한 번에 한 폴더만 묻는다**. 세 개를 한 번의 `AskUserQuestion` 호출에 묶지 말고, 폴더당 별도의 `AskUserQuestion` 호출을 순차로 쓴다(응답 받은 뒤 다음 폴더로). `references/`는 기본 후보에서 제외(필요하면 사용자가 구체 경로로 호출).
+   - **각 폴더 처리 순서**:
+     1. 해당 폴더의 직속 하위 항목을 `ls -1`로 수집. 파일/디렉토리 구분과 각 항목의 로컬 상태(없음 / 심볼릭(링크 대상 표시) / 실파일·실디렉토리)를 함께 파악한다.
+     2. 폴더가 비어 있으면 "비어 있음"으로 보고하고 다음 폴더로 건너뛴다.
+     3. `AskUserQuestion`(`multiSelect: true`)로 항목을 선택지로 제시:
+        - **항목 ≤ 4개**: 각 항목을 개별 선택지로.
+        - **항목 > 4개**: 선택지 3개는 주요 항목(이미 연결돼 있거나 대표성 있는 것 우선), 네 번째는 `전체(이 폴더 모두)`. 빠진 항목은 사용자가 "Other" 자유 입력으로 지정하도록 질문 본문에 안내. 항목이 너무 많아 한 질문으로도 부족하면 같은 폴더를 2개 질문으로 분할(예: "스킬 (1/2)", "스킬 (2/2)")해도 되지만, 되도록 `전체` 선택지 + Other 자유 입력으로 처리한다.
+        - 이미 올바르게 링크된 항목(심볼릭 → `$TOOLKIT/.claude/...`)은 라벨 뒤에 `(연결됨)`으로 표시.
+     4. 응답을 받아 해당 폴더 선택 목록에 누적.
+   - **처리**: 세 폴더의 선택이 끝나면 누적된 선택 목록을 공백 나열 인자처럼 취급해 상태표에 따라 **모드 자동 판별** 후 일괄 처리. 처리 중 conflict/promote가 필요한 항목은 항목별로 별도 확인 프롬프트.
+   - **빈 선택 / 전체 중단**: 세 폴더 모두 아무 항목도 고르지 않았거나 중간에 사용자가 중단하면 "선택된 항목 없음"으로 보고하고 종료.
+   - **구체 경로가 필요한 경우 안내**: 순차 질문 UI로 다루기 불편한 깊은 경로(예: `skills/pdf2md/SKILL.md` 단독)는 `/link_toolkit <경로1> <경로2>` 식으로 직접 호출하도록 안내.
 
 3. **pull 모드** (원본 → 로컬 심볼릭)
    - 절대 경로 심볼릭 사용: `ln -s "$TOOLKIT/.claude/<rel>" "$CLAUDE_PROJECT_DIR/.claude/<rel>"`
@@ -84,4 +98,4 @@ allowed-tools: Bash, Read, Glob
 - `/link_toolkit unlink skills/pdf2md` → 해당 심볼릭 링크만 제거 (원본은 보존)
 - `/link_toolkit unlink skills/pdf2md commands/git.md` → 여러 링크 선택 제거
 - `/link_toolkit unlink all` → `.claude/` 내 toolkit 대상 심볼릭 링크 일괄 제거
-- `/link_toolkit` (인자 없음) → 원본/로컬 상태 제시 후 사용자에게 선택을 물음
+- `/link_toolkit` (인자 없음) → `agents/` → `commands/` → `skills/` 순서로 폴더별 multiSelect 질문을 띄워 항목 선택 후 일괄 pull-link
