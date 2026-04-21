@@ -9,7 +9,8 @@
       "Read(//tmp/export_bundle/shared_skills_test01/.claude/**)",
       "Bash(mkdir -p /tmp/export_bundle/shared_skills_test01/.claude/commands)",
       "Bash(cp /mnt/c/shared_wk/claude_toolkit/.claude/commands/git.md /tmp/export_bundle/shared_skills_test01/.claude/commands/git.md)",
-      "Bash(cp /mnt/c/shared_wk/claude_toolkit/.claude/references/anthropic-skill-anatomy.md /tmp/export_bundle/shared_skills_test01/.claude/references/anthropic-skill-anatomy.md)"
+      "Bash(cp /mnt/c/shared_wk/claude_toolkit/.claude/references/anthropic-skill-anatomy.md /tmp/export_bundle/shared_skills_test01/.claude/references/anthropic-skill-anatomy.md)",
+      "mcp__gemini__ask-gemini"
     ]
   }
 }

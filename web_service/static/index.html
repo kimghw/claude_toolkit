@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>Claude Toolkit Exporter</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
+
+        :root {
+            --bg-color: #121212;
+            --panel-color: #1e1e1e;
+            --header-color: #2a2a2a;
+            --log-color: #1a1a1a;
+            --border-color: #333;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --font-main: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'Roboto Mono', 'SF Mono', 'Courier New', monospace;
+
+            --primary-btn-bg: #4a80f0;
+            --primary-btn-hover: #5a90f8;
+            --secondary-btn-bg: #383838;
+            --secondary-btn-hover: #454545;
+            --ok-btn-bg: #2a9d8f;
+            --ok-btn-hover: #32bdaa;
+
+            --accent-skills: #e76f51;
+            --accent-agents: #f4a261;
+            --accent-commands: #e9c46a;
+            --accent-references: #2a9d8f;
+
+            --log-ok: #2a9d8f;
+            --log-err: #e65a5a;
+            --log-info: #a0a0a0;
+
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+            --shadow-md: 0 4px 8px rgba(0,0,0,0.4);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-height: 100vh;
+            font-size: 14px;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            background-color: var(--panel-color);
+            padding: 16px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .top-bar .dest-input {
+            flex-grow: 1;
+            display: flex;
+            align-items: stretch;
+            height: 40px;
+        }
+        .top-bar .dest-input input {
+            flex-grow: 1;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-right: none;
+            border-radius: 6px 0 0 6px;
+            padding: 0 12px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            outline: none;
+        }
+        .top-bar .dest-input input:focus {
+            border-color: var(--primary-btn-bg);
+        }
+        .top-bar .dest-input button {
+            border-radius: 0 6px 6px 0;
+            border-left: none;
+        }
+
+        .action-buttons { display: flex; gap: 10px; }
+
+        button {
+            font-family: var(--font-main);
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            border-radius: 6px;
+            padding: 0 18px;
+            height: 40px;
+            cursor: pointer;
+            transition: background-color 0.2s ease, filter 0.2s;
+            color: var(--text-primary);
+        }
+        button.primary { background-color: var(--primary-btn-bg); color: white; }
+        button.primary:hover { background-color: var(--primary-btn-hover); }
+        button.secondary { background-color: var(--secondary-btn-bg); }
+        button.secondary:hover { background-color: var(--secondary-btn-hover); }
+        button.ok { background-color: var(--ok-btn-bg); color: white; }
+        button.ok:hover { background-color: var(--ok-btn-hover); }
+        button:active { filter: brightness(0.9); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .divider { width: 1px; background-color: var(--border-color); align-self: stretch; }
+
+        .global-controls { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+        .global-controls button { font-size: 12px; height: 30px; padding: 0 12px; }
+
+        /* Content Grid */
+        .content-grid {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            overflow: hidden;
+        }
+        .category-card {
+            background-color: var(--panel-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .category-card:nth-child(1) .card-header { border-top-color: var(--accent-skills); }
+        .category-card:nth-child(2) .card-header { border-top-color: var(--accent-agents); }
+        .category-card:nth-child(3) .card-header { border-top-color: var(--accent-commands); }
+        .category-card:nth-child(4) .card-header { border-top-color: var(--accent-references); }
+
+        .card-header {
+            background-color: var(--header-color);
+            padding: 12px 16px;
+            font-size: 16px;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 3px solid transparent;
+            border-bottom: 1px solid var(--border-color);
+            user-select: none;
+        }
+        .card-content {
+            padding: 12px;
+            overflow-y: auto;
+        }
+        .item-list { list-style: none; margin: 0; padding: 0; }
+        .item-list li { margin-bottom: 2px; }
+
+        /* Custom Checkbox */
+        .custom-checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 6px 8px;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+        .custom-checkbox-label:hover { background-color: var(--header-color); }
+        .custom-checkbox-label input[type="checkbox"] { display: none; }
+        .custom-checkbox-label .checkbox-visual {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--border-color);
+            background-color: var(--bg-color);
+            border-radius: 4px;
+            margin-right: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+        .custom-checkbox-label .checkbox-visual svg {
+            width: 14px;
+            height: 14px;
+            stroke: white;
+            stroke-width: 2.5;
+            stroke-dasharray: 20;
+            stroke-dashoffset: 20;
+            transition: stroke-dashoffset 0.2s ease;
+            fill: none;
+        }
+        .custom-checkbox-label input[type="checkbox"]:checked + .checkbox-visual {
+            background-color: var(--primary-btn-bg);
+            border-color: var(--primary-btn-bg);
+        }
+        .custom-checkbox-label input[type="checkbox"]:checked + .checkbox-visual svg {
+            stroke-dashoffset: 0;
+        }
+        .custom-checkbox-label input[type="checkbox"]:indeterminate + .checkbox-visual {
+            background-color: var(--primary-btn-bg);
+            border-color: var(--primary-btn-bg);
+        }
+        .custom-checkbox-label input[type="checkbox"]:indeterminate + .checkbox-visual svg {
+            stroke-dasharray: 10;
+            stroke-dashoffset: 0;
+            stroke-linecap: round;
+        }
+
+        .card-header .custom-checkbox-label { padding: 0; }
+        .card-header .custom-checkbox-label:hover { background: none; }
+        .card-header .checkbox-visual { margin-right: 0; }
+
+        .item-name { flex-grow: 1; word-break: break-all; }
+
+        /* Log Panel */
+        .log-panel {
+            background-color: var(--log-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            height: 200px;
+            min-height: 120px;
+            resize: vertical;
+            overflow: hidden;
+        }
+        .log-panel h3 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+            font-weight: 500;
+        }
+        #log {
+            flex-grow: 1;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        #log .entry {
+            padding: 2px 0;
+            border-bottom: 1px solid #282828;
+        }
+        #log .entry:last-child { border-bottom: none; }
+        #log .ok { color: var(--log-ok); }
+        #log .err { color: var(--log-err); }
+        #log .info { color: var(--log-info); }
+
+        /* Modal */
+        .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
+              align-items: center; justify-content: center; z-index: 100; }
+        .modal-bg.show { display: flex; }
+        .modal { background: var(--panel-color); border: 1px solid var(--border-color);
+           box-shadow: var(--shadow-md);
+           border-radius: 8px; width: 620px; max-height: 80vh; display: flex; flex-direction: column; }
+        .modal h3 { margin: 0; padding: 16px 20px; border-bottom: 1px solid var(--border-color); font-size: 16px; }
+        .modal .shortcuts { padding: 10px 16px; border-bottom: 1px solid var(--border-color); display: flex; gap: 6px; flex-wrap: wrap; }
+        .modal .shortcuts button { height: 30px; padding: 0 12px; font-size: 12px; }
+        .modal .current { padding: 10px 20px; font-family: var(--font-mono); font-size: 12px;
+                    color: var(--text-secondary); border-bottom: 1px solid var(--border-color); word-break: break-all; }
+        .modal .dirlist { flex: 1; overflow: auto; padding: 8px; }
+        .modal .dirlist button { width: 100%; text-align: left; margin: 2px 0;
+                           padding: 8px 12px; background: transparent; border: 1px solid transparent; color: var(--text-primary); height: auto; }
+        .modal .dirlist button:hover { background: var(--header-color); border-color: var(--border-color); }
+        .modal .dirlist .up { color: var(--accent-commands); }
+        .modal .actions { padding: 12px 20px; border-top: 1px solid var(--border-color);
+                    display: flex; justify-content: flex-end; gap: 10px; }
+        .modal .actions button { height: 36px; padding: 0 16px; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <div class="dest-input">
+            <input type="text" id="target" placeholder="대상 프로젝트 경로 (여기에 .claude/... 가 생성됨)">
+            <button class="secondary" onclick="openBrowse()">Browse...</button>
+        </div>
+        <div class="action-buttons">
+            <button class="primary" onclick="run('symlink')">Symlink</button>
+            <button class="primary" onclick="run('copy')">Copy</button>
+            <button class="ok" onclick="run('zip')">ZIP 다운로드</button>
+        </div>
+        <div class="divider"></div>
+        <div class="global-controls">
+            <span>전체</span>
+            <button class="secondary" onclick="selectAll(true)">선택</button>
+            <button class="secondary" onclick="selectAll(false)">해제</button>
+        </div>
+    </div>
+
+    <main class="content-grid">
+        <div class="category-card" id="skills-card">
+            <div class="card-header">
+                <span>Skills</span>
+                <label class="custom-checkbox-label">
+                    <input type="checkbox" class="catbox" data-cat="skills" onclick="toggleCat(this)">
+                    <span class="checkbox-visual">
+                        <svg viewBox="0 0 20 20"><path d="M4 10 L8 14 L16 6" /></svg>
+                    </span>
+                </label>
+            </div>
+            <div class="card-content">
+                <ul class="item-list" id="skills-list"></ul>
+            </div>
+        </div>
+        <div class="category-card" id="agents-card">
+            <div class="card-header">
+                <span>Agents</span>
+                <label class="custom-checkbox-label">
+                    <input type="checkbox" class="catbox" data-cat="agents" onclick="toggleCat(this)">
+                    <span class="checkbox-visual">
+                        <svg viewBox="0 0 20 20"><path d="M4 10 L8 14 L16 6" /></svg>
+                    </span>
+                </label>
+            </div>
+            <div class="card-content">
+                <ul class="item-list" id="agents-list"></ul>
+            </div>
+        </div>
+        <div class="category-card" id="commands-card">
+            <div class="card-header">
+                <span>Commands</span>
+                <label class="custom-checkbox-label">
+                    <input type="checkbox" class="catbox" data-cat="commands" onclick="toggleCat(this)">
+                    <span class="checkbox-visual">
+                        <svg viewBox="0 0 20 20"><path d="M4 10 L8 14 L16 6" /></svg>
+                    </span>
+                </label>
+            </div>
+            <div class="card-content">
+                <ul class="item-list" id="commands-list"></ul>
+            </div>
+        </div>
+        <div class="category-card" id="references-card">
+            <div class="card-header">
+                <span>References</span>
+                <label class="custom-checkbox-label">
+                    <input type="checkbox" class="catbox" data-cat="references" onclick="toggleCat(this)">
+                    <span class="checkbox-visual">
+                        <svg viewBox="0 0 20 20"><path d="M4 10 L8 14 L16 6" /></svg>
+                    </span>
+                </label>
+            </div>
+            <div class="card-content">
+                <ul class="item-list" id="references-list"></ul>
+            </div>
+        </div>
+    </main>
+
+    <div class="log-panel">
+        <h3>실행 로그</h3>
+        <div id="log"></div>
+    </div>
+
+    <div class="modal-bg" id="browseModal">
+      <div class="modal">
+        <h3>대상 폴더 선택</h3>
+        <div class="shortcuts">
+          <button class="secondary" onclick="openBrowse('~')">🏠 Home</button>
+          <button class="secondary" onclick="openBrowse('/mnt/c')">💽 C:</button>
+          <button class="secondary" onclick="openBrowse('/mnt/d')">💽 D:</button>
+          <button class="secondary" onclick="openBrowse('/')">📁 /</button>
+        </div>
+        <div class="current" id="browseCurrent">—</div>
+        <div class="dirlist" id="browseList"></div>
+        <div class="actions">
+          <button class="secondary" onclick="closeBrowse()">취소</button>
+          <button class="primary" onclick="selectHere()">이 폴더 선택</button>
+        </div>
+      </div>
+    </div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+async function loadTree() {
+  try {
+    const r = await fetch("/api/tree");
+    if (!r.ok) throw new Error(`Server responded with ${r.status}`);
+    const data = await r.json();
+
+    $$('.item-list').forEach(list => list.innerHTML = '');
+
+    for (const [cat, items] of Object.entries(data.categories)) {
+        const list = $(`#${cat}-list`);
+        if (!list) continue;
+
+        if (items.length === 0) {
+            const card = $(`#${cat}-card`);
+            if (card) card.style.display = 'none';
+            continue;
+        }
+
+        for (const it of items) {
+            const li = document.createElement("li");
+            li.innerHTML = `
+                <label class="custom-checkbox-label">
+                    <input type="checkbox" class="itembox" data-cat="${cat}" value="${it.rel}" onchange="updateCounter()">
+                    <span class="checkbox-visual">
+                        <svg viewBox="0 0 20 20"><path d="M4 10 L8 14 L16 6" /></svg>
+                    </span>
+                    <span class="item-name">${it.name}</span>
+                </label>`;
+            list.appendChild(li);
+        }
+    }
+    updateCounter();
+  } catch(e) {
+    log(`소스 트리를 불러오는 데 실패했습니다: ${e.message}`, "err");
+  }
+}
+
+function toggleCat(box) {
+  const cat = box.dataset.cat;
+  $$(`.itembox[data-cat="${cat}"]`).forEach(b => b.checked = box.checked);
+  updateCounter();
+}
+
+function selectAll(state) {
+  $$(".itembox, .catbox").forEach(b => {
+    b.checked = state;
+    b.indeterminate = false;
+  });
+  updateCounter();
+}
+
+function updateCounter() {
+  for (const cb of $$(".catbox")) {
+    const cat = cb.dataset.cat;
+    const all = $$(`.itembox[data-cat="${cat}"]`);
+    const sel = $$(`.itembox[data-cat="${cat}"]:checked`);
+    cb.checked = all.length > 0 && sel.length === all.length;
+    cb.indeterminate = sel.length > 0 && sel.length < all.length;
+  }
+}
+
+function getSelected() {
+  return [...$$(".itembox:checked")].map(b => b.value);
+}
+
+function log(msg, cls = "info") {
+  const div = document.createElement("div");
+  div.className = "entry " + cls;
+  const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+  div.textContent = `[${timestamp}] ${msg}`;
+  $("#log").appendChild(div);
+  $("#log").scrollTop = $("#log").scrollHeight;
+}
+
+async function run(mode) {
+  const items = getSelected();
+  if (items.length === 0) {
+      log("선택된 항목이 없습니다.", "err");
+      return;
+  }
+  const target = $("#target").value.trim();
+  if (mode !== "zip" && !target) {
+      log("대상 경로를 지정하세요.", "err");
+      $("#target").focus();
+      return;
+  }
+
+  log(`[${mode}] 시작 — ${items.length}개 항목`, "info");
+  $$('.action-buttons button, .global-controls button').forEach(b => b.disabled = true);
+
+  try {
+    const res = await fetch("/api/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, target: target || null, mode }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || res.status);
+    }
+
+    if (mode === "zip") {
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "claude_bundle.zip";
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      log(`ZIP 다운로드 완료 (${(blob.size / 1024).toFixed(1)} KB)`, "ok");
+    } else {
+      const data = await res.json();
+      log(`[${mode}] 완료 → ${data.target}`, "ok");
+      for (const r of data.results) log(`  ${r.action}: ${r.rel}`, "ok");
+    }
+  } catch (e) {
+    log(`오류: ${e.message}`, "err");
+  } finally {
+      $$('.action-buttons button, .global-controls button').forEach(b => b.disabled = false);
+  }
+}
+
+let browseCwd = null;
+
+async function openBrowse(path) {
+  const q = path ? `?path=${encodeURIComponent(path)}` : "";
+  try {
+      const r = await fetch("/api/browse" + q);
+      if (!r.ok) throw new Error(`Server responded with ${r.status}`);
+      const data = await r.json();
+
+      browseCwd = data.path;
+      $("#browseCurrent").textContent = data.path;
+      const list = $("#browseList");
+      list.innerHTML = "";
+
+      if (data.parent) {
+        const up = document.createElement("button");
+        up.className = "up";
+        up.textContent = "⬆️ .. (상위)";
+        up.onclick = () => openBrowse(data.parent);
+        list.appendChild(up);
+      }
+      for (const d of data.dirs) {
+        const b = document.createElement("button");
+        b.textContent = "📁 " + d.name;
+        b.onclick = () => openBrowse(d.path);
+        list.appendChild(b);
+      }
+      $("#browseModal").classList.add("show");
+  } catch (e) {
+      log(`폴더 탐색 실패: ${e.message}`, "err");
+  }
+}
+
+function closeBrowse() { $("#browseModal").classList.remove("show"); }
+
+function selectHere() {
+  if (browseCwd) $("#target").value = browseCwd;
+  closeBrowse();
+}
+
+document.addEventListener('DOMContentLoaded', loadTree);
+</script>
+</body>
+</html>
