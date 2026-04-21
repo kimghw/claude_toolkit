@@ -28,19 +28,19 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 ## 경로 정의
 
 - **로컬(소비자) 프로젝트**: `$CLAUDE_PROJECT_DIR` — 본 명령을 실행하는 프로젝트 루트. 동기화 대상은 `$CLAUDE_PROJECT_DIR/.claude/`.
-- **원본 레포(claude_toolkit)**: 본 문서에서는 `$TOOLKIT`으로 표기. 실제 경로는 아래 **원본 탐지** 절차로 매번 결정한다.
-- **원본 식별 ID** (고정 상수, 하드코딩):
+- **원본 레포(claude_toolkit)**: `$CLAUDE_TOOLKIT_ROOT`. 본 문서에서는 편의상 `$TOOLKIT`으로도 표기. 실제 경로는 아래 **원본 탐지** 절차로 매번 결정한다.
+- **`CLAUDE_TOOLKIT_ROOT` 식별자** (고정 상수, 하드코딩):
   ```
-  PROJECT_ID=5a7a5dc046eda268d64df3af621de2c1640f0d66b0abe71fc2509f5e9562b319
+  CLAUDE_TOOLKIT_ROOT_ID=5a7a5dc046eda268d64df3af621de2c1640f0d66b0abe71fc2509f5e9562b319
   ```
-  이 값은 `$TOOLKIT/.project_id` 파일에 기록돼 있으며, 해당 파일을 포함한 디렉토리를 `$TOOLKIT`으로 간주한다.
+  이 값은 `$CLAUDE_TOOLKIT_ROOT/.project_id` 파일에 기록돼 있으며, 해당 파일의 내용이 이 ID와 일치하는 디렉토리만 유효한 `$CLAUDE_TOOLKIT_ROOT`로 인정한다.
 
 ## 원본 탐지 (모든 동작에 선행, 매번 실행)
 
-1. **환경변수 빠른 경로** — `$CLAUDE_TOOLKIT`가 설정되어 있으면:
-   - `grep -q "$PROJECT_ID" "$CLAUDE_TOOLKIT/.project_id" 2>/dev/null` 로 매칭 확인.
-   - 일치 → `TOOLKIT="$CLAUDE_TOOLKIT"`로 확정하고 탐색 스킵.
-   - 불일치/파일 없음 → 환경변수 무효로 간주. `"CLAUDE_TOOLKIT이 유효하지 않음 — 재탐색합니다"` 고지 후 다음 단계로 폴백.
+1. **환경변수 빠른 경로** — `$CLAUDE_TOOLKIT_ROOT`가 설정되어 있으면:
+   - `grep -q "$CLAUDE_TOOLKIT_ROOT_ID" "$CLAUDE_TOOLKIT_ROOT/.project_id" 2>/dev/null` 로 매칭 확인.
+   - 일치 → 그대로 사용하고 탐색 스킵.
+   - 불일치/파일 없음 → 환경변수 무효로 간주. `"CLAUDE_TOOLKIT_ROOT이 유효하지 않음 — 재탐색합니다"` 고지 후 다음 단계로 폴백.
 
 2. **파일명 기반 탐색 (느린 경로)**:
    - 탐색 루트 후보(존재하는 것만, 중복 제거):
@@ -53,20 +53,20 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
          -o -name dist -o -name build \) -prune \
          -o -type f -name '.project_id' -print 2>/dev/null
      ```
-   - 후보 각각에 대해 `grep -l "$PROJECT_ID" <file>` 로 ID 매칭 여부 확인.
+   - 후보 각각에 대해 `grep -l "$CLAUDE_TOOLKIT_ROOT_ID" <file>` 로 ID 매칭 여부 확인.
 
 3. **매칭 개수별 분기**:
-   - **정확히 1개**: 그 파일의 부모 디렉토리를 `$TOOLKIT`으로 확정.
+   - **정확히 1개**: 그 파일의 부모 디렉토리를 `$CLAUDE_TOOLKIT_ROOT`으로 확정.
    - **2개 이상**: **`AskUserQuestion`으로 사용자에게 선택을 묻는다**. 각 후보를 `<경로>  (HEAD <shortsha>)` 형식으로 선택지로 제시. 후보가 4개를 넘으면 상위 3개 + `그 외 직접 입력` 옵션으로 구성하고 본문에 전체 목록을 나열한다.
-   - **0개**: 에러 고지 후 `AskUserQuestion`(자유 텍스트 입력)으로 `$TOOLKIT` 경로 직접 지정 요청. 입력받은 경로 역시 `.project_id`의 ID가 일치해야 수용, 불일치면 재질의.
+   - **0개**: 에러 고지 후 `AskUserQuestion`(자유 텍스트 입력)으로 `$CLAUDE_TOOLKIT_ROOT` 경로 직접 지정 요청. 입력받은 경로 역시 `.project_id`의 ID가 일치해야 수용, 불일치면 재질의.
 
 4. **확정 후 사후 처리**:
-   - 보고: `원본 = <경로>  (HEAD <shortsha>, <clean|dirty>)`.
-   - `$CLAUDE_TOOLKIT` 환경변수가 미설정이거나 확정 경로와 다르면, 쉘 rc에 다음을 추가하도록 **안내만** 한다(자동 수정 금지):
+   - 보고: `CLAUDE_TOOLKIT_ROOT = <경로>  (HEAD <shortsha>, <clean|dirty>)`.
+   - `$CLAUDE_TOOLKIT_ROOT` 환경변수가 미설정이거나 확정 경로와 다르면, 쉘 rc에 다음을 추가하도록 **안내만** 한다(자동 수정 금지):
      ```
-     export CLAUDE_TOOLKIT="<확정 경로>"
+     export CLAUDE_TOOLKIT_ROOT="<확정 경로>"
      ```
-   - **자기 자신 방지**: `realpath "$TOOLKIT"` == `realpath "$CLAUDE_PROJECT_DIR"` 이면 "로컬 == 원본" 에러로 즉시 중단 (claude_toolkit 레포 자체에서 실행된 경우).
+   - **자기 자신 방지**: `realpath "$CLAUDE_TOOLKIT_ROOT"` == `realpath "$CLAUDE_PROJECT_DIR"` 이면 "로컬 == 원본" 에러로 즉시 중단 (claude_toolkit 레포 자체에서 실행된 경우).
 
 ## 공통 규칙
 

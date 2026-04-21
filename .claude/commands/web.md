@@ -1,7 +1,7 @@
 ---
 description: "claude_toolkit 웹서버(web_service/server.py) 실행. FastAPI/uvicorn 기반 127.0.0.1:8765. 포트 충돌 시 대체 포트 안내."
 argument-hint: "[port] | stop | status"
-allowed-tools: Bash, Read
+allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 ---
 
 <!-- markdownlint-disable -->
@@ -12,13 +12,51 @@ allowed-tools: Bash, Read
 
 ## 경로 정의
 
-- `$TOOLKIT` — `claude_toolkit` 레포 루트. 다음 순서로 결정:
-  1. `$CLAUDE_TOOLKIT_ROOT` (있고 실존하면 사용)
-  2. `$(dirname "$CLAUDE_PROJECT_DIR")/claude_toolkit` (형제 경로)
-  3. `$HOME/claude_toolkit`
-  4. Windows 네이티브 시 `$USERPROFILE/claude_toolkit`
-  5. 모두 실패하면 사용자에게 경로 질문 후 중단.
-- `$WEB = $TOOLKIT/web_service` — 실행 디렉토리. `server.py`, `requirements.txt` 존재 확인.
+- `$CLAUDE_TOOLKIT_ROOT` — `claude_toolkit` 레포 루트. 아래 **탐지** 절차로 매번 결정한다. 본 문서에서는 편의상 `$TOOLKIT`으로도 표기.
+- `$WEB = $CLAUDE_TOOLKIT_ROOT/web_service` — 실행 디렉토리. `server.py`, `requirements.txt` 존재 확인.
+- **`CLAUDE_TOOLKIT_ROOT` 식별자** (고정 상수, 하드코딩):
+  ```
+  CLAUDE_TOOLKIT_ROOT_ID=5a7a5dc046eda268d64df3af621de2c1640f0d66b0abe71fc2509f5e9562b319
+  ```
+  이 값은 `$CLAUDE_TOOLKIT_ROOT/.project_id` 파일에 기록돼 있으며, 해당 파일의 내용이 이 ID와 일치하고 그 바로 아래 `web_service/server.py` 가 있는 디렉토리만 유효한 `$CLAUDE_TOOLKIT_ROOT`로 인정한다.
+
+## 탐지 (모든 동작에 선행, 매번 실행)
+
+각 단계에서 후보가 나오면 **반드시 `<후보>/web_service/server.py` 존재까지** 확인한 뒤 확정한다. 파일이 없으면 그 후보는 기각하고 다음 단계로 내려간다 (`web_service/` 는 `claude_toolkit` 루트에만 존재).
+
+1. **환경변수 빠른 경로** — `$CLAUDE_TOOLKIT_ROOT`가 설정되어 있으면:
+   - `grep -q "$CLAUDE_TOOLKIT_ROOT_ID" "$CLAUDE_TOOLKIT_ROOT/.project_id" 2>/dev/null` 로 ID 매칭 확인.
+   - `test -f "$CLAUDE_TOOLKIT_ROOT/web_service/server.py"` 로 server.py 존재 확인.
+   - 둘 다 통과 → 그대로 사용하고 탐색 스킵.
+   - 하나라도 실패 → `"CLAUDE_TOOLKIT_ROOT이 유효하지 않음 — 재탐색합니다"` 고지 후 다음 단계로 폴백.
+
+2. **현재 프로젝트 자체가 toolkit인지 확인** — `$CLAUDE_PROJECT_DIR/.project_id` 의 ID 매칭 + `$CLAUDE_PROJECT_DIR/web_service/server.py` 존재 둘 다 통과하면 `CLAUDE_TOOLKIT_ROOT="$CLAUDE_PROJECT_DIR"`로 확정.
+
+3. **파일명 기반 탐색 (느린 경로)**:
+   - 탐색 루트 후보(존재하는 것만, 중복 제거):
+     - `/mnt/c /mnt/d /mnt/e` (Windows 드라이브 마운트)
+     - `$HOME`, `/home`
+     - `$CLAUDE_PROJECT_DIR/..`, `$CLAUDE_PROJECT_DIR/../..` (상위 2단)
+   - 잡음 폴더는 `prune`로 제외:
+     ```
+     find <roots> \( -name node_modules -o -name .git -o -name .venv \
+         -o -name dist -o -name build \) -prune \
+         -o -type f -name '.project_id' -print 2>/dev/null
+     ```
+   - 후보 각각에 대해 `grep -l "$CLAUDE_TOOLKIT_ROOT_ID" <file>` 로 ID 매칭 여부 확인.
+   - ID 매칭된 후보의 부모 디렉토리에 **`web_service/server.py` 가 있는 것만** 최종 후보로 남긴다.
+
+4. **매칭 개수별 분기**:
+   - **정확히 1개**: 그 파일의 부모 디렉토리를 `$CLAUDE_TOOLKIT_ROOT`으로 확정.
+   - **2개 이상**: `AskUserQuestion`으로 사용자에게 선택을 묻는다. 각 후보를 `<경로>` 형식으로 제시. 후보가 4개를 넘으면 상위 3개 + `그 외 직접 입력` 옵션으로 구성.
+   - **0개**: 에러 고지 후 `AskUserQuestion`(자유 텍스트 입력)으로 `$CLAUDE_TOOLKIT_ROOT` 경로 직접 지정 요청. 입력받은 경로는 `.project_id` ID 일치 + `web_service/server.py` 존재 둘 다 통과해야 수용, 불일치면 재질의.
+
+5. **확정 후 사후 처리**:
+   - 보고: `CLAUDE_TOOLKIT_ROOT = <경로>`.
+   - `$CLAUDE_TOOLKIT_ROOT` 환경변수가 미설정이거나 확정 경로와 다르면, 쉘 rc에 다음을 추가하도록 **안내만** 한다(자동 수정 금지):
+     ```
+     export CLAUDE_TOOLKIT_ROOT="<확정 경로>"
+     ```
 
 ## 인자
 
