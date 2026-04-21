@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p .claude)",
+      "Bash(mv agents *)",
+      "Bash(rm -rf /tmp/export_bundle/shared_skills_test01)",
+      "Bash(mkdir -p /tmp/export_bundle/shared_skills_test01/.claude/references)",
+      "Bash(cp /mnt/c/shared_wk/claude_toolkit/.claude/references/anthropic-frontmatter.md /tmp/export_bundle/shared_skills_test01/.claude/references/anthropic-frontmatter.md)",
+      "Read(//tmp/export_bundle/shared_skills_test01/.claude/**)",
+      "Bash(mkdir -p /tmp/export_bundle/shared_skills_test01/.claude/commands)",
+      "Bash(cp /mnt/c/shared_wk/claude_toolkit/.claude/commands/git.md /tmp/export_bundle/shared_skills_test01/.claude/commands/git.md)",
+      "Bash(cp /mnt/c/shared_wk/claude_toolkit/.claude/references/anthropic-skill-anatomy.md /tmp/export_bundle/shared_skills_test01/.claude/references/anthropic-skill-anatomy.md)"
+    ]
+  }
+}
