@@ -12,6 +12,7 @@ Anthropic이 공개한 **skill-creator** 스킬(원본: `~/.codex/skills/.system
 | [anthropic-frontmatter.md](anthropic-frontmatter.md) | YAML frontmatter 작성법 (name, description 트리거 규칙) |
 | [anthropic-creation-process.md](anthropic-creation-process.md) | 6단계 Skill 제작 프로세스 + 포워드 테스팅 |
 | [anthropic-agents-yaml.md](anthropic-agents-yaml.md) | `agents/openai.yaml` (UI 메타데이터) 필드 스펙 |
+| [anthropic-permissions.md](anthropic-permissions.md) | Claude Code 권한 체계: permission mode 6종, settings.json 패턴, "모두 허용" 레시피 |
 
 ## 원본 출처
 

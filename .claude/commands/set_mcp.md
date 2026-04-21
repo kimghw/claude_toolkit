@@ -1,4 +1,78 @@
-# MCP 서버 설정 가이드
+---
+description: "MCP 서버(Codex/Gemini) 설정 가이드. 'update' 인자를 주면 Codex·Gemini 모두 현재 시점의 최신 모델로 재설정."
+allowed-tools: Bash, Read, Edit, Write
+---
+
+# /set_mcp 명령 — MCP 서버 설정
+
+인자: $ARGUMENTS
+
+## 최신 모델 정보 (단일 출처)
+
+이 섹션의 값이 **"최신 모델"의 정의**이다. 모델이 새로 출시되면 이 표만 수정하면 `/set_mcp update`가 자동으로 새 값을 적용한다.
+
+| 엔진 | 최신 모델 | 보조 설정 |
+|------|-----------|-----------|
+| Codex | `gpt-5.4` | `reasoning_effort = "xhigh"` |
+| Gemini | `gemini-3.1-pro` | — |
+
+> 값을 갱신할 때는 공식 출처(OpenAI / Google 공지, `codex --help`, `gemini models list` 등)에서 확인 후 위 표를 업데이트하고 본 문서의 다른 예시들도 동일한 값으로 맞춘다.
+
+## update 모드
+
+인자가 `update`일 때 수행하는 동작.
+
+### 동작 순서
+
+1. **현재 상태 확인**
+   - `claude mcp list` 로 등록된 MCP 서버 목록 확인.
+   - `~/.codex/config.toml` 존재 여부 및 현재 `model` / `reasoning_effort` 값 읽기.
+   - `claude mcp get codex` 와 `claude mcp get gemini` 로 현재 args/env 확인 (있으면).
+
+2. **Codex 갱신**
+   - `~/.codex/config.toml` 의 `model` 을 위 표의 Codex 최신 모델로, `reasoning_effort` 를 표의 보조 설정 값으로 설정.
+     - 파일이 없으면 `mkdir -p ~/.codex && touch ~/.codex/config.toml` 후 생성.
+     - 파일이 있으면 해당 키만 덮어쓰고 나머지 라인은 보존.
+   - MCP 등록이 이미 있으면:
+     - `-c model=...` / `-c reasoning_effort=...` 가 args 에 **인라인**으로 하드코딩 돼 있는 경우 → 제거 재등록 필요(아래).
+     - 인라인 오버라이드 없이 등록돼 있으면 config.toml 갱신만으로 충분. 재등록 불필요.
+   - 재등록이 필요한 경우:
+     ```bash
+     claude mcp remove codex -s user
+     claude mcp add -s user --transport stdio codex -- codex mcp-server
+     ```
+     인라인 오버라이드를 더는 사용하지 않고 config.toml 에 위임.
+
+3. **Gemini 갱신**
+   - Gemini 는 등록 시점에 모델을 고정하지 않지만, **`GEMINI_MODEL` 환경변수**나 `ask-gemini` 의 기본 `model` 파라미터로 제어 가능.
+   - `claude mcp get gemini` 의 env 에 `GEMINI_MODEL` 이 설정돼 있으면 위 표의 Gemini 최신 모델로 덮어쓰기 위해 재등록:
+     ```bash
+     claude mcp remove gemini -s user
+     GEMINI_MODEL="<표의 Gemini 최신 모델>" claude mcp add -s user --transport stdio gemini --env GEMINI_MODEL="<동일 값>" -- gemini-mcp
+     ```
+   - `GEMINI_MODEL` 이 설정돼 있지 않았다면 사용자에게 "등록 시 고정하시겠습니까? (기본은 호출 시 `model` 파라미터로 지정)" 확인 후 선택.
+
+4. **검증 및 보고**
+   - `claude mcp list` 로 재확인.
+   - `cat ~/.codex/config.toml` 로 최종 값 확인.
+   - 결과 리포트 형식: `엔진 | 이전 값 → 새 값 | 재등록 여부`.
+
+### 주의
+
+- **재등록은 파괴적**이 아니라 메타데이터만 바꾸지만, `-s user` / `-s project` 스코프가 섞여 있으면 의도치 않은 스코프로 옮겨질 수 있다. 먼저 스코프를 명시 확인한 뒤 동일 스코프로 재등록할 것.
+- config.toml 의 **다른 사용자 설정**(예: `sandbox_permissions`, `shell_environment_policy`)은 절대 건드리지 않는다. 해당 키들만 수정.
+- 값이 이미 최신과 동일하면 "변경 없음"으로 보고하고 재등록하지 않는다.
+
+### 인자 요약
+
+| 인자 | 동작 |
+|------|------|
+| (없음) | 이 문서를 설치/설정 가이드로 사용. 아래 "설치 가이드" 참조. |
+| `update` | 위의 update 모드 실행. |
+
+---
+
+## 설치 가이드
 
 ## 사전 준비
 
