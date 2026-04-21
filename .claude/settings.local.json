@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "mcp__gemini__ask-gemini",
-      "mcp__codex__codex",
-      "mcp__codex__codex-reply"
-    ]
-  }
-}

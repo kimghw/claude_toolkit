@@ -1,7 +1,7 @@
 ---
 description: "claude_toolkit 원본을 git pull 하고, commands/skills 파일을 현행 Claude Code 스펙(2026-04 기준)에 맞는지 검사하여 최신 버전으로 갱신. 인자로 범위 지정 (commands, skill, all)."
 argument-hint: "[commands|skill|skills|agents|references|all] ..."
-allowed-tools: Bash, Read, Glob, Grep
+allowed-tools: Bash, Read, Glob, Grep, Agent
 ---
 
 # /set_update 명령
@@ -67,9 +67,49 @@ allowed-tools: Bash, Read, Glob, Grep
      - **심볼릭이지만 다른 곳을 가리킴**: 외부 링크로 간주, 건드리지 않고 경고만.
    - 범위 내 **개별 항목**(예: `skills/pdf2md`)이 디렉토리 링크 밑이 아니라 별도 링크일 수 있으므로, `find "$CLAUDE_PROJECT_DIR/.claude/<범위>" -maxdepth 2 -type l`로 하위 심볼릭도 함께 점검.
 
-6. **스펙 준수 검사 (v2.1.111 기준)**
-   - 범위 내 모든 `*.md` / `SKILL.md`를 읽어 frontmatter 및 본문을 아래 체크리스트로 진단.
-   - 판정 근거는 `$TOOLKIT/.claude/references/anthropic-frontmatter.md`, `anthropic-skill-anatomy.md`, `anthropic-progressive-disclosure.md`를 참조.
+6. **스펙 준수 검사 (v2.1.111 기준) — 다중 서브에이전트 병렬 디스패치**
+   - 범위 내 모든 `*.md` / `SKILL.md`를 열거한 뒤 **배치로 나눠 `Explore` 서브에이전트들에 병렬로 위임**한다. 메인 에이전트는 오케스트레이터 역할만 수행하고 실제 읽기/진단은 서브에이전트가 담당한다(메인 컨텍스트 보호).
+   - 판정 근거는 `$TOOLKIT/.claude/references/anthropic-frontmatter.md`, `anthropic-skill-anatomy.md`, `anthropic-progressive-disclosure.md`를 참조. 각 서브에이전트에 이 경로들을 프롬프트에 명시 전달.
+
+### 6-0. 병렬 디스패치 규칙
+
+1. **대상 열거**: 범위별로 대상 파일 전체 경로 수집.
+   - `commands` → `$TOOLKIT/.claude/commands/*.md`
+   - `skills` → `$TOOLKIT/.claude/skills/*/SKILL.md` (필요 시 하위 `references/*.md` 포함 여부는 사용자 확인)
+   - `agents` → `$TOOLKIT/.claude/agents/*.md`
+   - `references` → `$TOOLKIT/.claude/references/*.md`
+2. **배치 분할**:
+   - 대상 파일이 **≤ 3개**면 에이전트 호출 없이 메인이 직접 진단 (오버헤드 회피).
+   - **4~12개**면 파일당 1개 에이전트 (최대 동시 12개).
+   - **> 12개**면 `ceil(N/4)` 개 배치로 나눠 배치당 ~4개 파일씩 묶어 디스패치.
+3. **동시 호출**: 모든 `Agent` 호출은 **한 번의 응답에 병렬 블록**으로 발행한다(순차 호출 금지). `subagent_type` 은 기본 `Explore`, 대상이 너무 많거나 판정 근거 문서까지 넓게 읽어야 하면 `general-purpose`.
+4. **에이전트 프롬프트 템플릿** (각 에이전트에 동일 형식으로 전달):
+
+   ```text
+   역할: Claude Code v2.1.111 스펙 감리자.
+   판정 근거 문서 (먼저 읽을 것):
+     - $TOOLKIT/.claude/references/anthropic-frontmatter.md
+     - $TOOLKIT/.claude/references/anthropic-skill-anatomy.md
+     - $TOOLKIT/.claude/references/anthropic-progressive-disclosure.md
+   검사 체크리스트: 아래 6-1 / 6-2 / 6-3 표를 그대로 적용.
+   대상 파일 (배치):
+     - <path1>
+     - <path2>
+     ...
+   요구 출력 (JSON, 300 단어 이하):
+     [
+       {
+         "file": "<path>",
+         "verdict": "pass|warn|fail",
+         "issues": [
+           {"rule": "<체크표 #번호>", "severity": "info|warn|error", "message": "<한국어 1줄>"}
+         ]
+       }
+     ]
+   수정은 하지 말 것. 진단만.
+   ```
+
+5. **결과 취합**: 모든 에이전트 결과를 받아 하나의 테이블로 병합. 각 파일은 최고 심각도(`fail` > `warn` > `pass`)로 분류. 에이전트 응답이 JSON 파싱에 실패하면 그 배치만 메인이 직접 재진단.
 
 ### 6-1. 공통 frontmatter 체크
 
@@ -139,6 +179,7 @@ allowed-tools: Bash, Read, Glob, Grep
 - **스킬 인자 동의어**: `skill`과 `skills` 모두 `skills/` 디렉토리를 의미하도록 처리.
 - **범위 외 변경도 표시**: 인자로 `commands`만 줬더라도 pull로 가져온 전체 커밋 개수와 요약은 보고(투명성 확보). 단, 파일 목록 diff와 스펙 검사는 인자 범위로 한정.
 - **스펙 기준 출처**: 판정은 `$SPEC_REF` 문서들을 따른다. 이 문서들이 최신이 아니라고 판단되면 먼저 `$SPEC_REF` 갱신을 제안.
+- **검사는 병렬 에이전트 위임**: 스펙 준수 검사는 파일 수에 따라 `Explore` 서브에이전트들에 병렬 디스패치(6-0 참조). 메인은 오케스트레이션·집계만 담당, 실제 파일 읽기와 체크리스트 판정은 에이전트 단에서 수행하여 메인 컨텍스트를 보호한다. 3개 이하일 때만 메인 직접 진단.
 
 ## 예시
 

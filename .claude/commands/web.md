@@ -1,0 +1,108 @@
+---
+description: "claude_toolkit 웹서버(web_service/server.py) 실행. FastAPI/uvicorn 기반 127.0.0.1:8765. 포트 충돌 시 대체 포트 안내."
+argument-hint: "[port] | stop | status"
+allowed-tools: Bash, Read
+---
+
+<!-- markdownlint-disable -->
+
+# /web 명령 — claude_toolkit 웹서버 실행
+
+인자: $ARGUMENTS
+
+## 경로 정의
+
+- `$TOOLKIT` — `claude_toolkit` 레포 루트. 다음 순서로 결정:
+  1. `$CLAUDE_TOOLKIT_ROOT` (있고 실존하면 사용)
+  2. `$(dirname "$CLAUDE_PROJECT_DIR")/claude_toolkit` (형제 경로)
+  3. `$HOME/claude_toolkit`
+  4. Windows 네이티브 시 `$USERPROFILE/claude_toolkit`
+  5. 모두 실패하면 사용자에게 경로 질문 후 중단.
+- `$WEB = $TOOLKIT/web_service` — 실행 디렉토리. `server.py`, `requirements.txt` 존재 확인.
+
+## 인자
+
+| 인자 | 동작 |
+|------|------|
+| (없음) | 기본 포트 `8765`로 **포어그라운드 실행**. |
+| `<숫자>` (예: `9000`) | 해당 포트로 실행. |
+| `bg` 또는 `background` | 백그라운드 실행 (로그는 `$WEB/.server.log`). |
+| `stop` | 실행 중인 서버 프로세스를 찾아 종료. |
+| `status` | 현재 실행 상태 · PID · 포트 조회. |
+
+> `bg` 와 포트 지정을 병용하려면 `/web bg 9000` 처럼 두 인자 사용.
+
+## 동작 순서
+
+### 공통 사전 점검
+
+1. `$WEB/server.py` 존재 확인 — 없으면 에러 후 중단.
+2. `python3 --version` 확인 (3.10+ 권장). 없으면 설치 안내 후 중단.
+3. 의존성 설치 확인:
+
+   ```bash
+   python3 -c "import fastapi, uvicorn" 2>/dev/null \
+     || pip install --user -r "$WEB/requirements.txt"
+   ```
+
+   - `pip` 이 없으면 `sudo apt-get install -y python3-pip` 안내.
+   - venv 를 쓰고 싶다는 환경변수(`CLAUDE_TOOLKIT_VENV=1`)가 있으면 `$WEB/.venv` 에 생성 후 그 venv 의 `pip`/`python` 사용.
+
+### 1. 기본 실행 (인자 없음 또는 포트 지정)
+
+1. 포트 결정: 인자로 숫자가 오면 그 포트, 아니면 `8765`.
+2. 포트 점유 여부 점검:
+
+   ```bash
+   (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -E ":${PORT}\\b"
+   ```
+
+   - 점유 중이면 `lsof -iTCP:${PORT} -sTCP:LISTEN` 로 프로세스 확인 후 사용자에게 선택: **중단 / 다른 포트로 재시도 / 기존 프로세스 종료**.
+3. 포어그라운드 실행:
+
+   ```bash
+   cd "$WEB" && python3 -m uvicorn server:app --host 127.0.0.1 --port "$PORT"
+   ```
+
+4. 시작 직후 5초 내 `curl -sf http://127.0.0.1:${PORT}/` 로 핸드셰이크 확인. 응답 없으면 로그 표시.
+5. 사용자 Ctrl+C 로 종료.
+
+### 2. 백그라운드 실행 (`bg` / `background`)
+
+1. PID 파일 점검: `$WEB/.server.pid` 가 있고 해당 PID 가 살아 있으면 "이미 실행 중" 보고 후 `status` 동작으로 분기.
+2. nohup + `run_in_background` 로 기동:
+
+   ```bash
+   cd "$WEB" && nohup python3 -m uvicorn server:app --host 127.0.0.1 --port "$PORT" \
+     > "$WEB/.server.log" 2>&1 &
+   echo $! > "$WEB/.server.pid"
+   ```
+
+3. 3초 대기 후 `/` 핑 확인. 성공 시 PID·포트·로그 경로 보고.
+
+### 3. `stop`
+
+1. `$WEB/.server.pid` 읽어 해당 PID 에 `kill` 시도. 5초 내 미종료면 `kill -9`.
+2. PID 파일 제거.
+3. PID 파일이 없으면 `pgrep -f "uvicorn.*server:app"` 로 폴백 탐색 후 사용자 확인 후 종료.
+
+### 4. `status`
+
+1. `$WEB/.server.pid` 존재 여부 → PID 살아 있는지 → 리스닝 포트 → 최근 로그 tail 10줄.
+2. 표 형식으로 보고.
+
+## 동작 규칙
+
+- **호스트는 기본 `127.0.0.1`**. 외부 노출이 필요하면 사용자가 명시적으로 `HOST=0.0.0.0 /web` 식으로 환경변수 지정. 보안상 기본 바인드는 루프백 유지.
+- **포트 자동 변경 금지**: 점유 시 사용자에게 물어본 뒤 변경. 무음 변경은 혼란 유발.
+- **의존성 자동 설치는 `--user`**. 시스템 파이썬을 건드리지 않도록.
+- **포어그라운드 실행이 기본**. 에이전트 흐름에서 블로킹을 피하려면 명시적으로 `bg` 사용.
+
+## 예시
+
+- `/web` → 127.0.0.1:8765 포어그라운드 실행.
+- `/web 9000` → 127.0.0.1:9000 포어그라운드 실행.
+- `/web bg` → 백그라운드 실행 (기본 포트).
+- `/web bg 9000` → 백그라운드, 포트 9000.
+- `/web status` → 현재 상태 조회.
+- `/web stop` → 실행 중이면 종료.
