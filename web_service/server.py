@@ -12,6 +12,7 @@ import os
 import platform
 import re
 import shutil
+import stat as _stat
 import string
 import subprocess
 import tempfile
@@ -104,10 +105,69 @@ def _safe_target(target: str) -> Path:
 
 
 def _remove(dst: Path) -> None:
-    if dst.is_symlink() or dst.is_file():
-        dst.unlink()
-    elif dst.is_dir():
-        shutil.rmtree(dst)
+    """Remove dst if it exists. Safely handles:
+    - POSIX symlinks / NTFS symlinks / NTFS junctions (unlink the link only)
+    - WSL LX_SYMLINK reparse points on /mnt/c (stat() fails with WinError 1920)
+    - Regular files and directories
+    """
+    try:
+        st = os.lstat(dst)
+    except FileNotFoundError:
+        return
+    except OSError:
+        # Reparse point we cannot stat at all (e.g., dangling WSL LX_SYMLINK).
+        # Best-effort removal — try both unlink and rmdir.
+        for fn in (os.unlink, os.rmdir):
+            try:
+                fn(dst)
+                return
+            except OSError:
+                continue
+        return
+
+    is_reparse = False
+    if platform.system() == "Windows":
+        attrs = getattr(st, "st_file_attributes", 0)
+        is_reparse = bool(attrs & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+
+    if _stat.S_ISDIR(st.st_mode):
+        # Directory: if it's a junction/symlink, unlink the link; else recurse.
+        if is_reparse:
+            os.rmdir(dst)
+        else:
+            shutil.rmtree(dst)
+    else:
+        os.unlink(dst)
+
+
+def _create_link(src: Path, dst: Path) -> str:
+    """Create a symlink-like pointer dst → src, returning the action name.
+
+    Windows: directories use NTFS junctions (no special privilege), files use
+    symlinks (requires Developer Mode), falling back to hardlink then copy.
+    POSIX/WSL: plain os.symlink.
+    """
+    if platform.system() == "Windows":
+        if src.is_dir():
+            r = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(dst), str(src)],
+                capture_output=True, text=True,
+            )
+            if r.returncode != 0:
+                raise HTTPException(500, f"mklink /J failed: {r.stderr or r.stdout}")
+            return "junction"
+        try:
+            os.symlink(src, dst)
+            return "symlink"
+        except OSError:
+            try:
+                os.link(src, dst)
+                return "hardlink"
+            except OSError:
+                shutil.copy2(src, dst)
+                return "copy"
+    os.symlink(src, dst)
+    return "symlink"
 
 
 @app.get("/api/tree")
@@ -192,8 +252,7 @@ def apply(req: ActionRequest):
         dst.parent.mkdir(parents=True, exist_ok=True)
         _remove(dst)
         if req.mode == "symlink":
-            dst.symlink_to(src)
-            action = "symlink"
+            action = _create_link(src, dst)
         else:  # copy
             if src.is_dir():
                 shutil.copytree(src, dst, symlinks=False)
