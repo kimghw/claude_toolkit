@@ -109,6 +109,8 @@
         button.secondary:hover { background-color: var(--secondary-btn-hover); }
         button.ok { background-color: var(--ok-btn-bg); color: white; }
         button.ok:hover { background-color: var(--ok-btn-hover); }
+        button.gh { background-color: #24292f; color: white; }
+        button.gh:hover { background-color: #32383f; }
         button:active { filter: brightness(0.9); }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -271,6 +273,32 @@
         .modal .actions { padding: 12px 20px; border-top: 1px solid var(--border-color);
                     display: flex; justify-content: flex-end; gap: 10px; }
         .modal .actions button { height: 36px; padding: 0 16px; font-size: 13px; }
+
+        .modal .form { padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; overflow: auto; }
+        .modal .form-row { display: flex; flex-direction: column; gap: 6px; }
+        .modal .form-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+        .modal .form input[type="text"] {
+            background: var(--bg-color); border: 1px solid var(--border-color);
+            color: var(--text-primary); border-radius: 6px; padding: 8px 12px;
+            font-family: var(--font-mono); font-size: 13px; outline: none;
+        }
+        .modal .form input[type="text"]:focus { border-color: var(--primary-btn-bg); }
+        .modal .radio-group { display: flex; gap: 16px; }
+        .modal .radio-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .modal .preview {
+            background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px;
+            padding: 10px 12px; font-family: var(--font-mono); font-size: 12px;
+            max-height: 160px; overflow: auto; color: var(--text-secondary);
+        }
+        .modal .preview .empty { color: var(--log-err); }
+        .modal .note {
+            background: #2a2418; border: 1px solid #4a3f25; border-radius: 6px;
+            padding: 10px 12px; font-size: 12px; color: #d4c49a; line-height: 1.6;
+        }
+        .modal .note code {
+            background: rgba(0,0,0,0.3); padding: 1px 6px; border-radius: 3px;
+            font-family: var(--font-mono); color: var(--accent-commands);
+        }
     </style>
 </head>
 <body>
@@ -284,6 +312,7 @@
             <button class="primary" onclick="run('symlink')">Symlink</button>
             <button class="primary" onclick="run('copy')">Copy</button>
             <button class="ok" onclick="run('zip')">ZIP 다운로드</button>
+            <button class="gh" onclick="openExport()">GitHub Export</button>
         </div>
         <div class="divider"></div>
         <div class="global-controls">
@@ -355,6 +384,37 @@
     <div class="log-panel">
         <h3>실행 로그</h3>
         <div id="log"></div>
+    </div>
+
+    <div class="modal-bg" id="exportModal">
+      <div class="modal">
+        <h3>GitHub Export — shared_skills_&lt;NN&gt;</h3>
+        <div class="form">
+          <label class="form-row">
+            <span class="form-label">NN (접미사)</span>
+            <input type="text" id="exportNN" placeholder="예: 01, test, draft" autocomplete="off">
+          </label>
+          <label class="form-row">
+            <span class="form-label">Visibility (최초 생성 시에만 적용)</span>
+            <div class="radio-group">
+              <label><input type="radio" name="exportVis" value="public" checked> public</label>
+              <label><input type="radio" name="exportVis" value="private"> private</label>
+            </div>
+          </label>
+          <div class="form-row">
+            <span class="form-label">선택된 항목</span>
+            <div id="exportItemsPreview" class="preview">—</div>
+          </div>
+          <div class="note">
+            ℹ️ <strong>번들 삭제</strong>는 웹에서 지원하지 않습니다. 터미널에서 Claude Code 슬래시 커맨드로:
+            <code>/toolkit_export del &lt;NN&gt;</code> · <code>/toolkit_export del</code> (전체)
+          </div>
+        </div>
+        <div class="actions">
+          <button class="secondary" onclick="closeExport()">취소</button>
+          <button class="gh" id="exportRunBtn" onclick="runExport()">Export 실행</button>
+        </div>
+      </div>
     </div>
 
     <div class="modal-bg" id="browseModal">
@@ -539,6 +599,65 @@ function closeBrowse() { $("#browseModal").classList.remove("show"); }
 function selectHere() {
   if (browseCwd) $("#target").value = browseCwd;
   closeBrowse();
+}
+
+function openExport() {
+  const items = getSelected();
+  const prev = $("#exportItemsPreview");
+  if (items.length === 0) {
+    prev.innerHTML = '<span class="empty">선택된 항목이 없습니다. 트리에서 먼저 선택하세요.</span>';
+  } else {
+    prev.innerHTML = items.map(i => `.claude/${i}`).join("\n");
+  }
+  $("#exportModal").classList.add("show");
+  setTimeout(() => $("#exportNN").focus(), 50);
+}
+
+function closeExport() { $("#exportModal").classList.remove("show"); }
+
+async function runExport() {
+  const items = getSelected();
+  if (items.length === 0) {
+    log("선택된 항목이 없습니다.", "err");
+    closeExport();
+    return;
+  }
+  const nn = $("#exportNN").value.trim();
+  if (!nn) {
+    log("NN(접미사)을 입력하세요.", "err");
+    $("#exportNN").focus();
+    return;
+  }
+  const visibility = document.querySelector('input[name="exportVis"]:checked').value;
+
+  const btn = $("#exportRunBtn");
+  btn.disabled = true;
+  btn.textContent = "Exporting…";
+  log(`[github-export] shared_skills_${nn} (${visibility}) — ${items.length}개 항목`, "info");
+
+  try {
+    const res = await fetch("/api/github/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nn, visibility, items }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || res.status);
+    }
+    const data = await res.json();
+    log(`[github-export] ${data.mode} → ${data.url}`, "ok");
+    for (const it of data.items) log(`  exported: ${it}`, "ok");
+    if (data.stray_symlinks && data.stray_symlinks.length) {
+      log(`⚠ 심볼릭 링크 발견: ${data.stray_symlinks.join(", ")}`, "err");
+    }
+    closeExport();
+  } catch (e) {
+    log(`export 오류: ${e.message}`, "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Export 실행";
+  }
 }
 
 document.addEventListener('DOMContentLoaded', loadTree);
