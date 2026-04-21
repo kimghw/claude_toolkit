@@ -1,5 +1,5 @@
 ---
-description: "claude_toolkit 원본을 git pull 하고, commands/skills 파일을 현행 Claude Code 스펙(2026-04 기준)에 맞는지 검사하여 최신 버전으로 갱신. 인자로 범위 지정 (commands, skill, all)."
+description: "claude_toolkit 원본을 git pull 하고, commands/skills/agents/references 파일을 현행 Claude Code 스펙(2026-04 기준)에 맞는지 검사하여 최신 버전으로 갱신. 인자로 범위 지정 (commands, skill|skills, agents, references, all, 없음=전체)."
 argument-hint: "[commands|skill|skills|agents|references|all] ..."
 allowed-tools: Bash, Read, Glob, Grep, Agent
 ---
@@ -62,8 +62,8 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 5. **로컬 링크 상태 점검**
    - 각 범위 디렉토리에 대해 `$CLAUDE_PROJECT_DIR/.claude/<범위>` 상태 확인:
      - **심볼릭이고 `$TOOLKIT/.claude/<범위>`를 가리킴**: "즉시 반영됨"으로 보고.
-     - **실디렉토리/실파일**: "링크되지 않은 로컬 복사본 — `/link_toolkit <범위>`로 전환하면 이후 자동 갱신됨" 안내.
-     - **없음**: "로컬에 아직 링크 안 됨 — `/link_toolkit <범위>`로 생성 가능" 안내.
+     - **실디렉토리/실파일**: "링크되지 않은 로컬 복사본 — `/toolkit_link <범위>`로 전환하면 이후 자동 갱신됨" 안내.
+     - **없음**: "로컬에 아직 링크 안 됨 — `/toolkit_link <범위>`로 생성 가능" 안내.
      - **심볼릭이지만 다른 곳을 가리킴**: 외부 링크로 간주, 건드리지 않고 경고만.
    - 범위 내 **개별 항목**(예: `skills/pdf2md`)이 디렉토리 링크 밑이 아니라 별도 링크일 수 있으므로, `find "$CLAUDE_PROJECT_DIR/.claude/<범위>" -maxdepth 2 -type l`로 하위 심볼릭도 함께 점검.
 
@@ -159,7 +159,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
      [로컬 링크]
      commands/: 심볼릭 ✓ (즉시 반영)
-     skills/:   실디렉토리 ⚠ (재링크 권장: /link_toolkit skills)
+     skills/:   실디렉토리 ⚠ (재링크 권장: /toolkit_link skills)
 
      [스펙 준수 — v2.1.111 기준]
      ✓ 통과: 5개 파일
@@ -174,7 +174,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 ## 동작 규칙
 
 - **커밋/푸시 안 함**: 이 명령은 오직 pull 만 한다. 원본에 변경을 쓰려면 `/toolkit_git`을 사용.
-- **자동 재링크 안 함**: 실파일로 남은 로컬 복사본을 자동으로 심볼릭으로 바꾸지 않는다. 사용자가 직접 `/link_toolkit`을 호출해야 함(데이터 손실 방지).
+- **자동 재링크 안 함**: 실파일로 남은 로컬 복사본을 자동으로 심볼릭으로 바꾸지 않는다. 사용자가 직접 `/toolkit_link`을 호출해야 함(데이터 손실 방지).
 - **자동 스펙 수정 안 함**: 진단 리포트만 제공. 개선 수정은 사용자가 항목별로 승인하고, 수정 대상 파일이 심볼릭이면 **원본(`$TOOLKIT/.claude/`)**을 편집한다(링크 경유하지 말 것).
 - **스킬 인자 동의어**: `skill`과 `skills` 모두 `skills/` 디렉토리를 의미하도록 처리.
 - **범위 외 변경도 표시**: 인자로 `commands`만 줬더라도 pull로 가져온 전체 커밋 개수와 요약은 보고(투명성 확보). 단, 파일 목록 diff와 스펙 검사는 인자 범위로 한정.

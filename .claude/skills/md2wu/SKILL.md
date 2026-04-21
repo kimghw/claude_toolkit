@@ -45,10 +45,12 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 | # | 항목 | 필수 | 설명 |
 |:---:|:---|:---:|:---|
 | 1 | 대상 경로 | 필수 | `.md` 파일 경로, 복수 파일 목록, 또는 폴더 경로. `/md2wu path/to/files` |
-| 2 | 분류 정의서 | 자동 | `shared/document_classification.md` (`_ko.md`) — 기존 분류 체계 |
-| 3 | 프로젝트 정의서 | 자동 | `shared/project_definitions.md` (`_ko.md`) — 식별자·토큰 기준 |
-| 4 | 명명 규칙 | 자동 | `shared/naming_convention.md` (`_ko.md`) — 파일명·키 생성 규칙 |
+| 2 | 분류 정의서 | 선택(사용자 제공) | `shared/document_classification.md` (`_ko.md`) — 기존 분류 체계. 저장소에 존재할 때만 로드한다. |
+| 3 | 프로젝트 정의서 | 선택(사용자 제공) | `shared/project_definitions.md` (`_ko.md`) — 식별자·토큰 기준. 저장소에 존재할 때만 로드한다. |
+| 4 | 명명 규칙 | 선택(사용자 제공) | `shared/naming_convention.md` (`_ko.md`) — 파일명·키 생성 규칙. 저장소에 존재할 때만 로드한다. |
 | 5 | 헤딩 프로파일 | 자동 | `.claude/skills/md2wu/heading_profiles.json` — Source Family별 헤딩 정규화 규칙 |
+
+> 위 2~4번 파일은 모두 **선택 입력**이다. 저장소에 해당 파일이 없으면 스킬은 그 참조를 **빈 값으로 간주하고 진행**하며, 기존 분류/식별자/명명 규칙이 없을 때는 Stage 3·4에서 사용자에게 직접 입력을 요청하거나 세션 내 메모리로만 결정을 기록한다. 새 파일을 자동 생성하지 않는다.
 
 ---
 
@@ -95,7 +97,7 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
    - 매칭된 기존 Source Family 또는 새로운 Source Family 후보
    - 판단 근거 (헤딩 패턴, 토큰 통계)
 4. 사용자 응답 처리:
-   - `승인` → 확정, `shared/document_classification.md` (`_ko.md`) 갱신 후 Stage 4 진행
+   - `승인` → 확정. `shared/document_classification.md` (`_ko.md`) 파일이 **제공된 경우에만 갱신**하고, 없으면 세션 내 메모리(스테이지 로그·매니페스트)에만 기록한 뒤 Stage 4 진행.
    - `수정` → 사용자 피드백 반영 후 재제시
    - `거부` → 해당 파일 건너뛰기
 
@@ -112,7 +114,7 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
      예) IMO:  Document → Part → Chapter → Regulation → Paragraph
      ```
 2. 기존 분류 체계와 비교하여 **신규 항목** 식별
-3. `shared/document_classification.md` (`_ko.md`)에 신규 항목 반영
+3. `shared/document_classification.md` (`_ko.md`)가 **제공된 경우에만** 신규 항목을 append(추가만 허용)한다. 파일이 없으면 갱신을 건너뛰고 세션 내 메모리(스테이지 로그·매니페스트)에만 기록한다.
 4. 결과를 사용자에게 요약 보고
 
 **산출물:** `corpus-{scope}__md2wu__classification_result.json` + 레퍼런스 갱신 — 세션 로컬 중간본은 scope 생략 허용, publishing 시 scope 포함 파일명으로 전역 승격.
@@ -367,7 +369,7 @@ Claude Code 세션 UUID 사용 (`~/.claude/projects/<project>/<session_id>.jsonl
 ## 산출물 카탈로그
 
 abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
-신규 Source Family 발견 시 `shared/document_classification.md` (`_ko.md`) 갱신 (추가만 허용).
+신규 Source Family 발견 시 `shared/document_classification.md` (`_ko.md`)가 **제공된 경우에만 갱신**(추가만 허용). 파일이 없으면 갱신을 생략하고 세션 내 메모리(스테이지 로그·매니페스트)에만 기록한다.
 
 ### 전역 발행 정책 (사용자 지침)
 
@@ -553,7 +555,7 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 | `session_capacity` | `= batch_capacity` | 한 세션이 점유하는 최대 cost. 기본적으로 배치 용량과 동일 → **한 세션 = 1 배치**. |
 | `stale_threshold` | 4h | 락 스테일 판정 mtime 임계. |
 
-> 임계값은 `shared/thresholds.yaml` 정본을 참조한다. 사용자가 `revise` 시 조정 가능. 사용자가 세션 예산을 직접 지정(예: 200K)하면 `batch_capacity`·`session_capacity` 모두 그 값으로 덮어쓴다.
+> 임계값은 사용자가 `shared/thresholds.yaml`을 제공하면 그 파일을 참조하고, 없으면 본 SKILL.md 본문의 기본값(표의 `chunk_max`·`wu_range`·`batch_capacity` 등)을 그대로 사용한다. 사용자가 `revise` 시 조정 가능. 사용자가 세션 예산을 직접 지정(예: 200K)하면 `batch_capacity`·`session_capacity` 모두 그 값으로 덮어쓴다.
 
 ---
 
@@ -604,5 +606,5 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 - `.md` 파일만 처리. PDF/HTML은 사전 변환 필요 (pdf2md 등)
 - 코드 블록 내부의 `#`은 헤딩이 아님
 - 헤딩 없는 파일: 단일 Chunk로 처리 (Stage 5 폴백)
-- `document_classification.md` 갱신은 추가만 허용 (기존 항목 삭제 금지)
+- `document_classification.md`가 제공된 경우에만 갱신하며 추가만 허용(기존 항목 삭제 금지). 파일이 없으면 갱신 자체를 생략하고 세션 내 메모리로만 기록.
 - Split WU 조각은 다른 문서와 병합 불가

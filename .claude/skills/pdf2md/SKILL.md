@@ -187,7 +187,7 @@ description: PDF를 구조화된 마크다운으로 변환. 원문 텍스트 무
      - **표기 일치**: 번호 체계와 제목 텍스트가 원문과 동일(임의 축약·번역·번호 재부여 금지).
    - **위반 발생 시 자가 수정**: 오케스트레이터가 직접 해당 `.md`를 수정하여 해소한 뒤 재검증한다. 수정 범위는 구조·포맷(제목 계층, 넘버링, 공백, 링크 형식 등)에 한정하며 원문 텍스트·의미는 변경하지 않는다. 원문을 건드려야만 해결되는 위반이거나 자동 판단이 어려운 경우는 중단하고 사용자에게 보고한다.
    - **이미지 링크 해소 검증**: 최종 경로 배치 후 모든 이미지 링크(`![...](...)`)의 실제 파일 존재 여부를 `test -f`로 확인한다. 실패 시 절차 6의 이미지 집계/재작성을 재수행한다.
-   - **오탈자 검사 (필수)**: `language_tool_python` 패키지로 영문(`en-US`)·국문(`ko-KR`) 오탈자를 검출한다. 언어 판정은 한글 문자 비율 기준(≥0.3 → ko, 혼재 시 둘 다 실행). **전처리**: LanguageTool에 텍스트를 넘기기 전에 수식 구간(`$$...$$` 블록, `$...$` 인라인)과 HTML 주석(`<!-- ... -->`)을 빈 문자열로 치환하여 수식 토큰 오탐을 방지한다. 자동 수정 범위는 **단일 후보 + 카테고리 `TYPOS`/`MISSPELLING`**에 한정하되, **`BRITISH_ENGLISH_DETECTOR` 룰은 자동 수정에서 제외**한다(원문이 영국식 영어인 경우 그대로 보존). 다중 후보·문맥 의존·문법 카테고리는 수정하지 않고 위치·원문·후보 목록을 사용자에게 보고한다. 리포트 생성 후 `python3 scripts/filter_typo_report.py`로 화이트리스트(`shared/typo_whitelist.yaml`) 기반 False Positive를 제거한다. 자동 수정·미수정 항목 모두 `agent_report.md`에 append한다. 수정 결과는 markdownlint를 재실행하여 재검증한다.
+   - **오탈자 검사 (필수)**: `language_tool_python` 패키지로 영문(`en-US`)·국문(`ko-KR`) 오탈자를 검출한다. 언어 판정은 한글 문자 비율 기준(≥0.3 → ko, 혼재 시 둘 다 실행). **전처리**: LanguageTool에 텍스트를 넘기기 전에 수식 구간(`$$...$$` 블록, `$...$` 인라인)과 HTML 주석(`<!-- ... -->`)을 빈 문자열로 치환하여 수식 토큰 오탐을 방지한다. 자동 수정 범위는 **단일 후보 + 카테고리 `TYPOS`/`MISSPELLING`**에 한정하되, **`BRITISH_ENGLISH_DETECTOR` 룰은 자동 수정에서 제외**한다(원문이 영국식 영어인 경우 그대로 보존). 다중 후보·문맥 의존·문법 카테고리는 수정하지 않고 위치·원문·후보 목록을 사용자에게 보고한다. 리포트 생성 자체는 필수이며, 후처리(화이트리스트 기반 False Positive 필터링)는 **선택 단계**다: `scripts/filter_typo_report.py`와 `shared/typo_whitelist.yaml`이 **둘 다 존재할 때만** `python3 scripts/filter_typo_report.py`를 실행한다. 둘 중 하나라도 없으면 필터링을 건너뛰고 원본 리포트를 그대로 수용한다(스킬 실패로 간주하지 않는다). 자동 수정·미수정 항목 모두 `agent_report.md`에 append한다. 수정 결과는 markdownlint를 재실행하여 재검증한다.
    - **이미지 0개 케이스도 명시 보고**: 이미지가 0개인 입력 파일이라도 "링크 0/0 통과(이미지 없음)"로 사용자 보고에 명시한다. vacuously true임을 암묵 처리하지 않는다.
    - **사용자 보고**: 어떤 규칙이 어디서 위반되었고 어떻게 수정했는지(파일·줄·규칙ID·수정 요지)를 사용자에게 요약 보고하고, `agent_report.md`에도 append한다(타임스탬프 + 작업명 헤더).
    - **규칙 가이드 피드백 갱신(필수)**: markdownlint 실행 결과가 나오면 오케스트레이터는 `.claude/skills/pdf2md/markdownlint_rules.md`를 갱신한다. 갱신 절차:
@@ -263,7 +263,7 @@ description: PDF를 구조화된 마크다운으로 변환. 원문 텍스트 무
 - markdownlint 설정이 없으면 기본값, 프로젝트에 `.markdownlint.json`이 있으면 그것을 우선한다.
 - markdownlint 규칙 가이드는 별도 파일 `.claude/skills/pdf2md/markdownlint_rules.md`에서 상시 갱신·관리한다. 변환 시 참고(서브에이전트) 및 최종 검증(오케스트레이터)의 단일 출처(SSOT)이다.
 - 오탈자 검사는 `language_tool_python`으로 en/ko 실행, 단일 후보·오탈자 카테고리 한정 자동 수정, 그 외는 사용자 보고.
-- 오탈자 리포트 생성 후 `python3 scripts/filter_typo_report.py`로 False Positive를 제거한다. 화이트리스트 SSOT: `shared/typo_whitelist.yaml`.
+- 오탈자 리포트 생성은 필수, 후처리 필터링은 선택이다: `scripts/filter_typo_report.py`와 `shared/typo_whitelist.yaml`이 **둘 다 존재할 때만** `python3 scripts/filter_typo_report.py`로 False Positive를 제거하고, 둘 중 하나라도 없으면 원본 리포트를 그대로 수용한다(스크립트/디렉터리 부재를 스킬 실패로 간주하지 않는다). 파일이 제공된 경우 화이트리스트 SSOT: `shared/typo_whitelist.yaml`.
 - 검증 실패 시 해당 파일의 큐·락을 보존한 채(락 `state=failed`) 사용자에게 보고한다.
 
 #### DON'T

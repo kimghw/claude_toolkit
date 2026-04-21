@@ -117,12 +117,14 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 
 ### 4. 인자 없음 또는 기타
 
-- 인자 없음 → **`push`와 동일하게 동작** (로컬 → 원본 복사 + `git commit + push`). 사전 계획 테이블로 사용자 승인을 받는 단계는 그대로 유지.
+- 인자 없음 → **`diff`와 동일하게 동작** (변경 미리보기만, 실제 파일 변경·`git commit`·`push` 없음). 파괴적 동작(`pull`/`push`)은 사용자가 반드시 **명시적으로 입력**해야만 수행된다.
 - 알 수 없는 인자 → 사용법 요약 출력 후 종료.
+
+> ⚠ **안전 기본값**: 인자 없이 `/toolkit_merge_win` 을 호출하면 `diff` 와 동일하게 변경 미리보기만 표시한다. 원본 레포를 덮어쓰는 `push` 는 **반드시 명시적으로** `/toolkit_merge_win push` 로 호출해야 수행된다. `pull` 도 마찬가지.
 
 ## 예시
 
-- `/toolkit_merge_win` → `push`와 동일 (로컬 → 원본 복사 후 `git commit + push`).
+- `/toolkit_merge_win` → `diff`와 동일 (변경 미리보기만, 실제 파일 변경·`git commit`·`push` 없음).
 - `/toolkit_merge_win pull` → 원본의 최신 버전으로 로컬의 기존 파일만 갱신 (신규 파일 추가 없음).
-- `/toolkit_merge_win push` → 로컬 수정분을 원본에 복사 후 `git commit + push`.
+- `/toolkit_merge_win push` → 로컬 수정분을 원본에 복사 후 `git commit + push` (명시 지정해야 수행).
 - `/toolkit_merge_win diff` → 변경 미리보기만, 실제 변경은 수행하지 않음.

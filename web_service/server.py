@@ -198,24 +198,34 @@ def get_tree() -> dict:
     return {"source": str(SOURCE_ROOT), "categories": tree}
 
 
-@app.get("/api/roots")
-def get_roots() -> dict:
-    roots: list[dict] = [{"label": "Home", "path": str(Path.home())}]
+def _roots_entries() -> list[dict]:
+    """SSOT: label/path 쌍 리스트. get_roots() 와 _allowed_roots() 가 공유."""
+    entries: list[dict] = [{"label": "Home", "path": str(Path.home())}]
     system = platform.system()
     if system == "Windows":
         for letter in string.ascii_uppercase[2:]:
             drive = Path(f"{letter}:/")
             if drive.exists():
-                roots.append({"label": f"{letter}:", "path": f"{letter}:\\"})
+                entries.append({"label": f"{letter}:", "path": f"{letter}:\\"})
     elif _is_wsl():
         for letter in ("c", "d", "e", "f"):
             m = Path(f"/mnt/{letter}")
             if m.exists():
-                roots.append({"label": f"/mnt/{letter}", "path": str(m)})
-        roots.append({"label": "/", "path": "/"})
+                entries.append({"label": f"/mnt/{letter}", "path": str(m)})
+        entries.append({"label": "/", "path": "/"})
     else:
-        roots.append({"label": "/", "path": "/"})
-    return {"roots": roots}
+        entries.append({"label": "/", "path": "/"})
+    return entries
+
+
+def _allowed_roots() -> list[Path]:
+    """browse() 가 노출을 허용하는 루트 경로 목록."""
+    return [Path(_normalize_path(e["path"])) for e in _roots_entries()]
+
+
+@app.get("/api/roots")
+def get_roots() -> dict:
+    return {"roots": _roots_entries()}
 
 
 @app.get("/api/browse")
@@ -224,6 +234,9 @@ def browse(path: str = Query(default="")) -> dict:
     p = base.resolve()
     if not p.exists() or not p.is_dir():
         raise HTTPException(400, f"not a directory: {p}")
+    roots = [Path(r).expanduser().resolve() for r in _allowed_roots()]
+    if not any(p == r or r in p.parents for r in roots):
+        raise HTTPException(400, f"path not under allowed roots: {p}")
     dirs = []
     try:
         entries = sorted(p.iterdir(), key=lambda x: x.name.lower())
@@ -265,8 +278,31 @@ def apply(req: ActionRequest):
         )
 
     results = []
+    target_root_resolved = target_root.resolve()
     for src, rel in pairs:
         dst = target_root / rel
+
+        # Symlink traversal guard: reject any parent chain within target_root
+        # that is itself a symlink, and verify existing parents resolve under
+        # target_root. Also validate dst itself if it already exists.
+        for parent in list(dst.parents):
+            try:
+                parent.relative_to(target_root)
+            except ValueError:
+                break  # above target_root — stop walking upward
+            if parent.is_symlink():
+                raise HTTPException(400, f"unsafe target path: {dst}")
+            if parent.exists():
+                try:
+                    parent.resolve().relative_to(target_root_resolved)
+                except ValueError:
+                    raise HTTPException(400, f"unsafe target path: {dst}")
+        if dst.exists() or dst.is_symlink():
+            try:
+                dst.resolve().relative_to(target_root_resolved)
+            except ValueError:
+                raise HTTPException(400, f"unsafe target path: {dst}")
+
         dst.parent.mkdir(parents=True, exist_ok=True)
         _remove(dst)
         if req.mode == "symlink":
@@ -324,12 +360,36 @@ def _normalize_nn(raw: str) -> str:
     return nn
 
 
+def _contains_external_symlink(src: Path) -> Optional[Path]:
+    """SOURCE_ROOT 밖을 가리키는 심볼릭 링크가 src 내부에 있으면 그 경로 반환."""
+    if src.is_symlink():
+        resolved = src.resolve()
+        if SOURCE_ROOT not in resolved.parents and resolved != SOURCE_ROOT:
+            return src
+    if src.is_dir():
+        for root, dirs, files in os.walk(src, followlinks=False):
+            for name in list(dirs) + list(files):
+                p = Path(root) / name
+                if p.is_symlink():
+                    target = p.resolve()
+                    try:
+                        target.relative_to(SOURCE_ROOT)
+                    except ValueError:
+                        return p
+    return None
+
+
 @app.post("/api/github/export")
 def github_export(req: ExportRequest):
     if not req.items:
         raise HTTPException(400, "no items selected")
     nn = _normalize_nn(req.nn)
     pairs = [(_safe_source(rel), rel) for rel in req.items]
+
+    for src, _rel in pairs:
+        bad = _contains_external_symlink(src)
+        if bad is not None:
+            raise HTTPException(400, f"source contains external symlink: {bad}")
 
     auth = _sh(["gh", "auth", "status"])
     if auth.returncode != 0:
@@ -432,4 +492,6 @@ def index():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8765)
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8765"))
+    uvicorn.run(app, host=host, port=port)

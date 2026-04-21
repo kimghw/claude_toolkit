@@ -3,7 +3,7 @@ description: "선택한 skill/command/agent/reference를 shared_skills_<NN> GitH
 allowed-tools: Bash, Read, Glob, AskUserQuestion
 ---
 
-# /export_bundle 명령
+# /toolkit_export 명령
 
 인자: $ARGUMENTS
 
@@ -197,23 +197,23 @@ toolkit `.claude/` 하위에서 선택한 파일/폴더를 **받는 쪽 레포**
 
 - 단일 스킬 최초 공개:
   ```
-  /export_bundle 01 --public skills/pdf2md
+  /toolkit_export 01 --public skills/pdf2md
   ```
   → `https://github.com/<OWNER>/shared_skills_01` (public) 생성, `.claude/skills/pdf2md/` 포함.
 
 - 여러 항목 묶어서 비공개 임시 공유:
   ```
-  /export_bundle 02 skills/pdf2md skills/md2wu commands/git.md agents/pdf2md-worker.md
+  /toolkit_export 02 skills/pdf2md skills/md2wu commands/git.md agents/pdf2md-worker.md
   ```
 
 - 특정 파일만:
   ```
-  /export_bundle draft references/anthropic-frontmatter.md references/anthropic-skill-anatomy.md
+  /toolkit_export draft references/anthropic-frontmatter.md references/anthropic-skill-anatomy.md
   ```
 
 - 기존 번들 갱신(스킬 추가):
   ```
-  /export_bundle 01 skills/pdf2md skills/md2wu
+  /toolkit_export 01 skills/pdf2md skills/md2wu
   ```
   → `shared_skills_01`이 이미 있으므로 force-push, 이전 `skills/pdf2md`만 있던 상태를 두 스킬 포함 상태로 교체.
 

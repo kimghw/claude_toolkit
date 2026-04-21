@@ -138,7 +138,7 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 
 ## 동작 규칙
 
-- **호스트는 기본 `127.0.0.1`**. 외부 노출이 필요하면 사용자가 명시적으로 `HOST=0.0.0.0 /web` 식으로 환경변수 지정. 보안상 기본 바인드는 루프백 유지.
+- **호스트는 기본 `127.0.0.1`**. 외부 노출이 필요하면 `/web` 대신 `python server.py` 를 `HOST=0.0.0.0 python server.py` 형태로 직접 실행하거나, uvicorn 을 `uvicorn server:app --host 0.0.0.0 --port 8765` 로 수동 기동. 보안상 `/web` 의 기본 바인드는 루프백 유지.
 - **포트 자동 변경 금지**: 점유 시 사용자에게 물어본 뒤 변경. 무음 변경은 혼란 유발.
 - **의존성은 `$WEB/.venv` 의 venv 기반 기본 설치**. 시스템 파이썬 오염 방지. `CLAUDE_TOOLKIT_NO_VENV=1` 일 때만 `pip install --user` 폴백.
 - **포어그라운드 실행이 기본**. 에이전트 흐름에서 블로킹을 피하려면 명시적으로 `bg` 사용.

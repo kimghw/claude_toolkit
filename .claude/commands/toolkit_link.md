@@ -11,7 +11,7 @@ allowed-tools: Bash, Read, Glob, AskUserQuestion
 
 ## 경로 정의
 
-- **원본 레포(claude_toolkit) 위치**: `<프로젝트 루트>` — 본 문서에서 claude_toolkit 레포 루트를 가리키는 기호. 설치 위치가 바뀌면 이 표기만 기준으로 해석하면 됨. 이하 본문에서는 `$TOOLKIT`으로 참조.
+- **원본 레포(claude_toolkit) 위치**: `claude_toolkit 레포 루트` — 본 문서에서 claude_toolkit 레포 루트를 가리키는 기호. 설치 위치가 바뀌면 이 표기만 기준으로 해석하면 됨. 이하 본문에서는 `$TOOLKIT`으로 참조.
 - **원본 콘텐츠 디렉토리**: `$TOOLKIT/.claude/` — 이 레포는 자체적으로 `.claude/` 하위에 `agents/`, `commands/`, `skills/`, `references/`를 보관한다. 심볼릭 원본은 모두 이 경로 하위.
 - **로컬 대상(소비자 프로젝트)**: `$CLAUDE_PROJECT_DIR` — 본 명령을 실행하는 현재 프로젝트 루트. `.claude/`가 생성/수정되는 위치.
 
