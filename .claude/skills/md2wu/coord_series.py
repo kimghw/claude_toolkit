@@ -25,8 +25,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-SKILL_DIR = Path("/mnt/c/shared_wk/ontology_iacs/.claude/skills/md2wu")
-PYTHON = "/mnt/c/shared_wk/ontology_iacs/.venv-md2wu/bin/python"
+SKILL_DIR = Path(__file__).resolve().parent
+PYTHON = os.environ.get("MD2WU_PYTHON") or sys.executable
 
 
 def parse_filename(filename: str):

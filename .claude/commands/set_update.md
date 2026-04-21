@@ -19,7 +19,7 @@ allowed-tools: Bash, Read, Glob, Grep
 
 ## 경로 정의
 
-- `$TOOLKIT`: `/mnt/c/shared_wk/claude_toolkit` (기본). 없으면 `/home/kimghw/claude_toolkit`로 폴백.
+- `$TOOLKIT`: 소비자 프로젝트와 형제 위치의 `claude_toolkit` (기본). 즉 `$(dirname "$CLAUDE_PROJECT_DIR")/claude_toolkit`. 이 경로가 없으면 `/home/kimghw/claude_toolkit`로 폴백.
 - `$TOOLKIT/.claude/`: 원본 콘텐츠 디렉토리. `agents/`, `commands/`, `skills/`, `references/`가 모두 이 하위에 있음. 내부 경로 표기는 **소비자 `.claude/` 기준 상대 경로**(예: `commands/git.md`)를 쓰되, toolkit 측 실제 파일은 `$TOOLKIT/.claude/<범위>`에 있다.
 - `$CLAUDE_PROJECT_DIR`: 본 명령이 실행되는 소비자 프로젝트 루트.
 - `$SPEC_REF`: `$TOOLKIT/.claude/references/anthropic-*.md` (스펙 판정 근거 문서들).
@@ -40,7 +40,7 @@ allowed-tools: Bash, Read, Glob, Grep
 ## 동작 순서
 
 1. **원본 경로 및 상태 점검**
-   - `$TOOLKIT` 결정: `/mnt/c/shared_wk/claude_toolkit`가 존재하면 사용, 없으면 `/home/kimghw/claude_toolkit` 폴백. 둘 다 없으면 에러 후 중단.
+   - `$TOOLKIT` 결정: `TOOLKIT_BASE="$(dirname "$CLAUDE_PROJECT_DIR")/claude_toolkit"`가 존재하면 사용, 없으면 `/home/kimghw/claude_toolkit` 폴백. 둘 다 없으면 에러 후 중단.
    - `git -C "$TOOLKIT" status --porcelain`로 작업 디렉토리가 깨끗한지 확인.
      - 변경이 있으면 사용자에게 보여주고 **pull을 계속할지 확인** (충돌 위험 경고).
    - `git -C "$TOOLKIT" rev-parse --abbrev-ref HEAD`로 현재 브랜치 확인.
