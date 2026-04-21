@@ -36,6 +36,27 @@ def _is_wsl() -> bool:
         return False
 
 
+_WSL_MNT_DRIVE_RE = re.compile(r"^/mnt/[a-zA-Z](/|$)")
+
+
+def _is_windows_fs_target(dst: Path) -> bool:
+    """대상 경로가 Windows 파일시스템(NTFS)을 향하는지 판정.
+
+    symlink 모드는 POSIX/WSL 네이티브 경로에서만 허용한다.
+    Windows 파일시스템(Windows 네이티브 전체, WSL의 /mnt/<drive>/...)
+    에서는 symlink를 만들 수 없게 차단하기 위한 헬퍼.
+    """
+    if platform.system() == "Windows":
+        return True
+    if _is_wsl():
+        try:
+            resolved = str(dst.resolve())
+        except (OSError, RuntimeError):
+            resolved = str(dst)
+        return bool(_WSL_MNT_DRIVE_RE.match(resolved))
+    return False
+
+
 def _resolve_source_root() -> Path:
     env = os.environ.get("CLAUDE_TOOLKIT_ROOT")
     if env:
@@ -141,31 +162,17 @@ def _remove(dst: Path) -> None:
 
 
 def _create_link(src: Path, dst: Path) -> str:
-    """Create a symlink-like pointer dst → src, returning the action name.
+    """Create a POSIX symlink dst → src.
 
-    Windows: directories use NTFS junctions (no special privilege), files use
-    symlinks (requires Developer Mode), falling back to hardlink then copy.
-    POSIX/WSL: plain os.symlink.
+    정책: symlink 모드는 WSL 네이티브/Linux 경로에서만 허용한다.
+    Windows 파일시스템(Windows 네이티브, WSL의 /mnt/<drive>/...)에
+    대한 호출은 apply() 단계에서 이미 차단되지만, 방어적으로 한 번 더 막는다.
     """
-    if platform.system() == "Windows":
-        if src.is_dir():
-            r = subprocess.run(
-                ["cmd", "/c", "mklink", "/J", str(dst), str(src)],
-                capture_output=True, text=True,
-            )
-            if r.returncode != 0:
-                raise HTTPException(500, f"mklink /J failed: {r.stderr or r.stdout}")
-            return "junction"
-        try:
-            os.symlink(src, dst)
-            return "symlink"
-        except OSError:
-            try:
-                os.link(src, dst)
-                return "hardlink"
-            except OSError:
-                shutil.copy2(src, dst)
-                return "copy"
+    if _is_windows_fs_target(dst):
+        raise HTTPException(
+            400,
+            f"symlink mode is not allowed on Windows filesystem: {dst}",
+        )
     os.symlink(src, dst)
     return "symlink"
 
@@ -245,6 +252,17 @@ def apply(req: ActionRequest):
 
     target_root = _safe_target(req.target or "") / ".claude"
     target_root.mkdir(parents=True, exist_ok=True)
+
+    if req.mode == "symlink" and _is_windows_fs_target(target_root):
+        raise HTTPException(
+            400,
+            (
+                "symlink 모드는 Windows 파일시스템에 사용할 수 없습니다 "
+                f"(대상: {target_root}). "
+                "copy 모드로 다시 시도하거나, WSL 네이티브 경로"
+                "(예: ~/project, /home/<user>/...)를 대상으로 지정하세요."
+            ),
+        )
 
     results = []
     for src, rel in pairs:
