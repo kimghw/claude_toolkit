@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-WORKROOT = Path("/home/kimghw/ontology_iacs/skill_md2wu")
+WORKROOT = Path(os.environ.get("MD2WU_WORKROOT") or Path.cwd()).resolve()
 CHUNK_MAX = 32_000
 CHUNK_EXCEPTION = 48_000  # 1.5x
 WU_MIN = 16_000
@@ -41,7 +41,7 @@ GRAMMAR_VERSION = "iacs_ui_v01"
 SOURCE_FAMILY = "iacs_ui"
 
 
-sys.path.insert(0, str(WORKROOT.parent / ".claude/skills/md2wu"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import chunk_wu as cw  # reuse chunk planner
 
 

@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 
-WORKROOT = Path("/home/kimghw/ontology_iacs/skill_md2wu")
+WORKROOT = Path(os.environ.get("MD2WU_WORKROOT") or Path.cwd()).resolve()
 STALE_THRESHOLD_HOURS = 4
 
 
