@@ -38,15 +38,20 @@ allowed-tools: Bash, Read
 
 1. `$WEB/server.py` 존재 확인 — 없으면 에러 후 중단.
 2. `python3 --version` 확인 (3.10+ 권장). 없으면 설치 안내 후 중단.
-3. 의존성 설치 확인:
+3. venv 준비 및 의존성 설치 (기본 동작):
 
    ```bash
-   python3 -c "import fastapi, uvicorn" 2>/dev/null \
-     || pip install --user -r "$WEB/requirements.txt"
+   # venv 없으면 생성
+   [ -d "$WEB/.venv" ] || python3 -m venv "$WEB/.venv"
+   # venv의 python/pip 를 사용
+   PY="$WEB/.venv/bin/python"
+   "$PY" -c "import fastapi, uvicorn" 2>/dev/null \
+     || "$PY" -m pip install -r "$WEB/requirements.txt"
    ```
 
-   - `pip` 이 없으면 `sudo apt-get install -y python3-pip` 안내.
-   - venv 를 쓰고 싶다는 환경변수(`CLAUDE_TOOLKIT_VENV=1`)가 있으면 `$WEB/.venv` 에 생성 후 그 venv 의 `pip`/`python` 사용.
+   - `$WEB/.venv` 는 **항상 `web_service/` 아래**에 둔다. 루트 `.gitignore` 의 `.venv*/` 규칙으로 자동 무시됨.
+   - `python3-venv` 패키지가 없어 `python -m venv` 실패 시 `sudo apt-get install -y python3-venv` 안내.
+   - 시스템 파이썬에 직접 설치하고 싶다는 환경변수(`CLAUDE_TOOLKIT_NO_VENV=1`)가 있을 때만 `pip install --user -r "$WEB/requirements.txt"` 로 폴백.
 
 ### 1. 기본 실행 (인자 없음 또는 포트 지정)
 
@@ -58,11 +63,13 @@ allowed-tools: Bash, Read
    ```
 
    - 점유 중이면 `lsof -iTCP:${PORT} -sTCP:LISTEN` 로 프로세스 확인 후 사용자에게 선택: **중단 / 다른 포트로 재시도 / 기존 프로세스 종료**.
-3. 포어그라운드 실행:
+3. 포어그라운드 실행 (venv python 사용):
 
    ```bash
-   cd "$WEB" && python3 -m uvicorn server:app --host 127.0.0.1 --port "$PORT"
+   cd "$WEB" && "$WEB/.venv/bin/python" -m uvicorn server:app --host 127.0.0.1 --port "$PORT"
    ```
+
+   `CLAUDE_TOOLKIT_NO_VENV=1` 폴백 모드에서는 `python3 -m uvicorn ...` 사용.
 
 4. 시작 직후 5초 내 `curl -sf http://127.0.0.1:${PORT}/` 로 핸드셰이크 확인. 응답 없으면 로그 표시.
 5. 사용자 Ctrl+C 로 종료.
@@ -70,10 +77,10 @@ allowed-tools: Bash, Read
 ### 2. 백그라운드 실행 (`bg` / `background`)
 
 1. PID 파일 점검: `$WEB/.server.pid` 가 있고 해당 PID 가 살아 있으면 "이미 실행 중" 보고 후 `status` 동작으로 분기.
-2. nohup + `run_in_background` 로 기동:
+2. nohup + `run_in_background` 로 기동 (venv python 사용):
 
    ```bash
-   cd "$WEB" && nohup python3 -m uvicorn server:app --host 127.0.0.1 --port "$PORT" \
+   cd "$WEB" && nohup "$WEB/.venv/bin/python" -m uvicorn server:app --host 127.0.0.1 --port "$PORT" \
      > "$WEB/.server.log" 2>&1 &
    echo $! > "$WEB/.server.pid"
    ```
@@ -95,7 +102,7 @@ allowed-tools: Bash, Read
 
 - **호스트는 기본 `127.0.0.1`**. 외부 노출이 필요하면 사용자가 명시적으로 `HOST=0.0.0.0 /web` 식으로 환경변수 지정. 보안상 기본 바인드는 루프백 유지.
 - **포트 자동 변경 금지**: 점유 시 사용자에게 물어본 뒤 변경. 무음 변경은 혼란 유발.
-- **의존성 자동 설치는 `--user`**. 시스템 파이썬을 건드리지 않도록.
+- **의존성은 `$WEB/.venv` 의 venv 기반 기본 설치**. 시스템 파이썬 오염 방지. `CLAUDE_TOOLKIT_NO_VENV=1` 일 때만 `pip install --user` 폴백.
 - **포어그라운드 실행이 기본**. 에이전트 흐름에서 블로킹을 피하려면 명시적으로 `bg` 사용.
 
 ## 예시
