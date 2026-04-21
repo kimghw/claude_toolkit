@@ -9,6 +9,22 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 
 Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지 않을 때 사용한다. 원본 `claude_toolkit` 레포의 `.claude/` 콘텐츠를 **파일 복사**로 현재 프로젝트와 양방향 동기화한다. 심볼릭 방식은 `/toolkit_link` 참조.
 
+## 사전 조건 (필수)
+
+**로컬 `$CLAUDE_PROJECT_DIR/.claude/` 는 원본에서 "파일 복사"로 받아온 실파일 트리여야만 동작한다.**
+
+- 대상: 실제 파일(regular file)과 실제 디렉토리(regular directory)로 구성된 `.claude/` 트리.
+- **금지**: `.claude/` 자체 또는 그 하위 어느 경로라도 **심볼릭 링크 / 바로가기 / junction / WSL LX_SYMLINK 리파스 포인트** 가 포함된 경우. 이 경우 본 명령은 즉시 중단하고 사용자에게 `/toolkit_link status` 로 확인할 것을 안내한다.
+- 이유: 본 명령의 동기화는 `cp -f` 기반이라, 링크가 섞여 있으면 원본을 그대로 덮어써 실제 대상 파일이 파손되거나 링크 타깃이 의도치 않게 수정될 수 있다.
+
+### 링크 감지 절차 (모든 동작에 선행)
+
+1. `test -L "$CLAUDE_PROJECT_DIR/.claude"` — `.claude` 루트 자체가 링크면 중단.
+2. `find "$CLAUDE_PROJECT_DIR/.claude" -type l -print` — 하위에 링크가 **하나라도** 있으면 중단.
+3. Windows junction/리파스 포인트 확인이 필요한 경우 (WSL에서 `/mnt/*` 경로), 추가로 `ls -la` 출력 상 `->` 표시를 함께 점검.
+4. 링크가 발견되면 경로 목록을 보고하고 다음 메시지로 종료:
+   > `.claude/` 트리에 심볼릭/junction 링크가 포함되어 있습니다. `toolkit_merge_win` 은 복사 방식 전용이므로 중단합니다. 링크 관리가 필요하면 `/toolkit_link status` 를 사용하세요.
+
 ## 경로 정의
 
 - **로컬(소비자) 프로젝트**: `$CLAUDE_PROJECT_DIR` — 본 명령을 실행하는 프로젝트 루트. 동기화 대상은 `$CLAUDE_PROJECT_DIR/.claude/`.
@@ -59,7 +75,7 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
   - `settings.local.json` — 프로젝트 로컬 설정, 공유 금지.
   - `.project_id` — 원본 식별 파일, 복사 금지.
   - `.git/`, `.DS_Store`, `*.swp`, `*.tmp` — 잡파일.
-- **심볼릭 링크 처리**: 로컬 또는 원본 어느 쪽에 심볼릭 링크가 있으면 복사 대신 **스킵**하고 그 사실을 리포트. `/toolkit_link`로 관리 중일 가능성이 있으므로 사용자에게 `/toolkit_link status` 호출을 안내.
+- **심볼릭 링크 처리**: 사전 조건 절차에서 로컬에 링크가 있으면 이미 중단되었으므로, 이 단계에 도달한 시점의 로컬은 순수 복사 트리임이 보장된다. 원본 `$TOOLKIT/.claude/` 쪽에 링크가 섞여 있으면 해당 파일은 복사 대신 **스킵**하고 그 사실을 리포트한다.
 
 ## 인자별 동작
 
@@ -101,12 +117,12 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 
 ### 4. 인자 없음 또는 기타
 
-- 인자 없음 → `diff`와 동일한 미리보기 출력 후, `/toolkit_merge_win pull` 또는 `/toolkit_merge_win push` 호출을 안내.
+- 인자 없음 → **`push`와 동일하게 동작** (로컬 → 원본 복사 + `git commit + push`). 사전 계획 테이블로 사용자 승인을 받는 단계는 그대로 유지.
 - 알 수 없는 인자 → 사용법 요약 출력 후 종료.
 
 ## 예시
 
-- `/toolkit_merge_win` → 원본 탐지 후 양방향 diff 미리보기.
+- `/toolkit_merge_win` → `push`와 동일 (로컬 → 원본 복사 후 `git commit + push`).
 - `/toolkit_merge_win pull` → 원본의 최신 버전으로 로컬의 기존 파일만 갱신 (신규 파일 추가 없음).
 - `/toolkit_merge_win push` → 로컬 수정분을 원본에 복사 후 `git commit + push`.
 - `/toolkit_merge_win diff` → 변경 미리보기만, 실제 변경은 수행하지 않음.

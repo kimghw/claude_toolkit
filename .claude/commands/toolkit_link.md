@@ -3,7 +3,9 @@ description: "kimghw/claude_toolkit와 현재 프로젝트 .claude/를 심볼릭
 allowed-tools: Bash, Read, Glob, AskUserQuestion
 ---
 
-# /link_toolkit 명령
+<!-- markdownlint-disable -->
+
+# /toolkit_link 명령
 
 인자: $ARGUMENTS
 
@@ -53,7 +55,7 @@ allowed-tools: Bash, Read, Glob, AskUserQuestion
      4. 응답을 받아 해당 폴더 선택 목록에 누적.
    - **처리**: 세 폴더의 선택이 끝나면 누적된 선택 목록을 공백 나열 인자처럼 취급해 상태표에 따라 **모드 자동 판별** 후 일괄 처리. 처리 중 conflict/promote가 필요한 항목은 항목별로 별도 확인 프롬프트.
    - **빈 선택 / 전체 중단**: 세 폴더 모두 아무 항목도 고르지 않았거나 중간에 사용자가 중단하면 "선택된 항목 없음"으로 보고하고 종료.
-   - **구체 경로가 필요한 경우 안내**: 순차 질문 UI로 다루기 불편한 깊은 경로(예: `skills/pdf2md/SKILL.md` 단독)는 `/link_toolkit <경로1> <경로2>` 식으로 직접 호출하도록 안내.
+   - **구체 경로가 필요한 경우 안내**: 순차 질문 UI로 다루기 불편한 깊은 경로(예: `skills/pdf2md/SKILL.md` 단독)는 `/toolkit_link <경로1> <경로2>` 식으로 직접 호출하도록 안내.
 
 3. **pull 모드** (원본 → 로컬 심볼릭)
    - 절대 경로 심볼릭 사용: `ln -s "$TOOLKIT/.claude/<rel>" "$CLAUDE_PROJECT_DIR/.claude/<rel>"`
@@ -126,11 +128,11 @@ allowed-tools: Bash, Read, Glob, AskUserQuestion
 
 ## 예시
 
-- `/link_toolkit all` → 3개 최상위 디렉토리 pull-link
-- `/link_toolkit skills/pdf2md skills/md2wu` → 2개 스킬 pull-link
-- `/link_toolkit references` → 로컬 `.claude/references/`가 실디렉토리이고 원본에 없으면 **promote** (toolkit으로 이동 후 심볼릭 대체)
-- `/link_toolkit unlink skills/pdf2md` → 해당 심볼릭 링크만 제거 (원본은 보존)
-- `/link_toolkit unlink skills/pdf2md commands/git.md` → 여러 링크 선택 제거
-- `/link_toolkit unlink all` → `.claude/` 내 toolkit 대상 심볼릭 링크 일괄 제거
-- `/link_toolkit` (인자 없음) → `agents/` → `commands/` → `skills/` 순서로 폴더별 multiSelect 질문을 띄워 항목 선택 후 일괄 pull-link
-- `/link_toolkit status` (또는 `list`) → 현재 `.claude/` 항목별 연결 상태(toolkit/외부/로컬/없음/broken) 조회만, 변경 없음
+- `/toolkit_link all` → 3개 최상위 디렉토리 pull-link
+- `/toolkit_link skills/pdf2md skills/md2wu` → 2개 스킬 pull-link
+- `/toolkit_link references` → 로컬 `.claude/references/`가 실디렉토리이고 원본에 없으면 **promote** (toolkit으로 이동 후 심볼릭 대체)
+- `/toolkit_link unlink skills/pdf2md` → 해당 심볼릭 링크만 제거 (원본은 보존)
+- `/toolkit_link unlink skills/pdf2md commands/git.md` → 여러 링크 선택 제거
+- `/toolkit_link unlink all` → `.claude/` 내 toolkit 대상 심볼릭 링크 일괄 제거
+- `/toolkit_link` (인자 없음) → `agents/` → `commands/` → `skills/` 순서로 폴더별 multiSelect 질문을 띄워 항목 선택 후 일괄 pull-link
+- `/toolkit_link status` (또는 `list`) → 현재 `.claude/` 항목별 연결 상태(toolkit/외부/로컬/없음/broken) 조회만, 변경 없음
