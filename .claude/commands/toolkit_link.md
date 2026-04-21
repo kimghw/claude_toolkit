@@ -1,5 +1,5 @@
 ---
-description: "kimghw/claude_toolkit와 현재 프로젝트 .claude/를 심볼릭 링크로 연결 (pull: 원본→로컬, promote: 로컬→원본, unlink: 로컬 링크 제거)"
+description: "kimghw/claude_toolkit와 현재 프로젝트 .claude/를 심볼릭 링크로 연결 (pull: 원본→로컬, promote: 로컬→원본, unlink: 로컬 링크 제거, status: 현재 연결 상태 조회)"
 allowed-tools: Bash, Read, Glob, AskUserQuestion
 ---
 
@@ -39,6 +39,7 @@ allowed-tools: Bash, Read, Glob, AskUserQuestion
    - **여러 항목**: 공백으로 나열 가능 (예: `references skills/md2wu`). 각 항목 독립 처리.
    - **`unlink <경로> [<경로> ...]`**: 지정한 경로의 심볼릭 링크만 선택적으로 제거 (아래 5-1 참조).
    - **`unlink all`**: `.claude/` 하위에서 `$TOOLKIT/.claude/`를 가리키는 **모든** 심볼릭 링크를 일괄 제거.
+   - **`status`** 또는 **`list`**: `.claude/` 하위 항목들의 현재 연결 상태만 조회(읽기 전용, 변경 없음). 아래 5-2 참조.
 
 2-1. **인터랙티브 선택 모드 (인자 없음 기본 동작)**
    - **폴더별 순차 질문**이 원칙: `agents/` → `commands/` → `skills/` 순서로 **한 번에 한 폴더만 묻는다**. 세 개를 한 번의 `AskUserQuestion` 호출에 묶지 말고, 폴더당 별도의 `AskUserQuestion` 호출을 순차로 쓴다(응답 받은 뒤 다음 폴더로). `references/`는 기본 후보에서 제외(필요하면 사용자가 구체 경로로 호출).
@@ -86,6 +87,39 @@ allowed-tools: Bash, Read, Glob, AskUserQuestion
    - **사후 검증**: 제거된 경로에 `ls` 해서 없어졌는지 확인. 처리 결과는 6번 사후 확인에 포함.
    - 원본(`$TOOLKIT/.claude/<rel>`)은 절대 건드리지 않음. 원본까지 지우려면 toolkit 레포에서 직접 작업.
 
+5-2. **status 모드** (읽기 전용 조회)
+
+   목적: 현재 프로젝트의 `.claude/` 하위 항목이 각각 어디와 연결되어 있는지, 어느 버전의 toolkit을 참조 중인지 한눈에 보여준다. 파일 변경 없음.
+
+   - **수집**: `.claude/` 직속 및 `agents/`·`commands/`·`skills/`·`references/` 2단 하위까지 `find "$CLAUDE_PROJECT_DIR/.claude" -maxdepth 3 \( -type l -o -type f -o -type d \)`로 항목 나열.
+   - **분류**: 각 항목을 다음 4 카테고리로 판정.
+     - **[toolkit]**: 심볼릭이고 `readlink -f` 결과가 `$TOOLKIT/.claude/` 하위.
+     - **[외부]**: 심볼릭이지만 `$TOOLKIT/.claude/` 밖을 가리킴.
+     - **[로컬]**: 심볼릭이 아닌 실파일/실디렉토리.
+     - **[없음]**: 원본에는 있는데(`$TOOLKIT/.claude/<rel>` 존재) 로컬에는 없는 항목(참고용, `pull` 후보).
+   - **toolkit 버전 정보**: `git -C "$TOOLKIT" rev-parse --short HEAD` 및 `git -C "$TOOLKIT" status --porcelain`로 현재 커밋·워킹트리 상태를 같이 출력. 커밋되지 않은 변경이 있으면 "dirty" 표시.
+   - **깨진 링크 점검**: `[toolkit]` 카테고리 항목 중 `readlink -f` 결과가 실존하지 않으면 "**broken**" 표식을 붙여 별도 보고(toolkit 원본이 이동/삭제된 경우).
+   - **출력 형식**: 카테고리별로 그룹화해 표시. 예:
+     ```
+     toolkit: $TOOLKIT = /mnt/c/claude_toolkit/claude_toolkit  (HEAD a1b2c3d, clean)
+
+     [toolkit]
+       .claude/commands/            → $TOOLKIT/.claude/commands
+       .claude/agents/              → $TOOLKIT/.claude/agents
+       .claude/skills/pdf2md/       → $TOOLKIT/.claude/skills/pdf2md
+     [외부]
+       .claude/skills/foo           → /other/path/foo
+     [로컬]
+       .claude/skills/my-local      (실디렉토리)
+       .claude/settings.local.json  (실파일)
+     [없음 — toolkit에 있지만 로컬 미링크]
+       references/, agents/<x>.md
+     [broken]
+       (없음)
+     ```
+   - **요약 한 줄**: `toolkit: N개 · 외부: N개 · 로컬: N개 · 깨짐: N개`.
+   - 이 모드는 사용자 승인 프롬프트 없이 즉시 출력하고 종료. `/toolkit_link pull`, `/toolkit_link unlink` 등 후속 호출로 상태를 바꿀 수 있음을 안내.
+
 6. **사후 확인**
    - `ls -la "$CLAUDE_PROJECT_DIR/.claude/<rel 상위>"` 및 `readlink`로 링크 검증.
    - 처리된 항목별로 `모드 | 경로 | 결과` 요약 보고.
@@ -99,3 +133,4 @@ allowed-tools: Bash, Read, Glob, AskUserQuestion
 - `/link_toolkit unlink skills/pdf2md commands/git.md` → 여러 링크 선택 제거
 - `/link_toolkit unlink all` → `.claude/` 내 toolkit 대상 심볼릭 링크 일괄 제거
 - `/link_toolkit` (인자 없음) → `agents/` → `commands/` → `skills/` 순서로 폴더별 multiSelect 질문을 띄워 항목 선택 후 일괄 pull-link
+- `/link_toolkit status` (또는 `list`) → 현재 `.claude/` 항목별 연결 상태(toolkit/외부/로컬/없음/broken) 조회만, 변경 없음

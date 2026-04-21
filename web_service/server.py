@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import io
 import os
+import platform
 import re
 import shutil
+import string
 import subprocess
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,7 +24,31 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-SOURCE_ROOT = (Path.home() / "claude_toolkit" / ".claude").resolve()
+
+def _is_wsl() -> bool:
+    # WSL reports Linux but embeds "microsoft" in /proc/version.
+    if platform.system() != "Linux":
+        return False
+    try:
+        return "microsoft" in Path("/proc/version").read_text().lower()
+    except OSError:
+        return False
+
+
+def _resolve_source_root() -> Path:
+    env = os.environ.get("CLAUDE_TOOLKIT_ROOT")
+    if env:
+        p = Path(env).expanduser().resolve()
+        if p.name != ".claude":
+            p = p / ".claude"
+    else:
+        p = (Path(__file__).resolve().parents[1] / ".claude").resolve()
+    if not p.exists():
+        raise RuntimeError(f"SOURCE_ROOT does not exist: {p}")
+    return p
+
+
+SOURCE_ROOT = _resolve_source_root()
 CATEGORIES = ["skills", "agents", "commands", "references"]
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -56,12 +83,14 @@ def _normalize_path(raw: str) -> str:
     if not raw:
         return raw
     s = raw.strip().strip('"').strip("'")
-    m = _WIN_DRIVE_RE.match(s)
-    if m:
-        drive = m.group(1).lower()
-        rest = m.group(2).replace("\\", "/")
-        return f"/mnt/{drive}/{rest}".rstrip("/")
-    return s.replace("\\", "/")
+    if _is_wsl():
+        m = _WIN_DRIVE_RE.match(s)
+        if m:
+            drive = m.group(1).lower()
+            rest = m.group(2).replace("\\", "/")
+            return f"/mnt/{drive}/{rest}".rstrip("/")
+        return s.replace("\\", "/")
+    return s
 
 
 def _safe_target(target: str) -> Path:
@@ -100,6 +129,26 @@ def get_tree() -> dict:
             )
         tree[cat] = entries
     return {"source": str(SOURCE_ROOT), "categories": tree}
+
+
+@app.get("/api/roots")
+def get_roots() -> dict:
+    roots: list[dict] = [{"label": "Home", "path": str(Path.home())}]
+    system = platform.system()
+    if system == "Windows":
+        for letter in string.ascii_uppercase[2:]:
+            drive = Path(f"{letter}:/")
+            if drive.exists():
+                roots.append({"label": f"{letter}:", "path": f"{letter}:\\"})
+    elif _is_wsl():
+        for letter in ("c", "d", "e", "f"):
+            m = Path(f"/mnt/{letter}")
+            if m.exists():
+                roots.append({"label": f"/mnt/{letter}", "path": str(m)})
+        roots.append({"label": "/", "path": "/"})
+    else:
+        roots.append({"label": "/", "path": "/"})
+    return {"roots": roots}
 
 
 @app.get("/api/browse")
@@ -217,7 +266,7 @@ def github_export(req: ExportRequest):
         raise HTTPException(500, f"failed to resolve gh user: {who.stderr}")
     owner = who.stdout.strip()
 
-    scratch = Path("/tmp/export_bundle") / f"shared_skills_{nn}"
+    scratch = Path(tempfile.gettempdir()) / "export_bundle" / f"shared_skills_{nn}"
     if scratch.exists():
         shutil.rmtree(scratch)
     (scratch / ".claude").mkdir(parents=True)
