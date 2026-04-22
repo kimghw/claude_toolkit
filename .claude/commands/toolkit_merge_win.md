@@ -37,6 +37,12 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 
 ## 원본 탐지 (모든 동작에 선행, 매번 실행)
 
+0. **사용자 힌트 빠른 경로** — 현재 대화에서 사용자가 원본 경로를 직접 언급했다면(예: "원본은 `/home/foo/claude_toolkit` 에 있다"):
+   - 제시된 경로에 대해 `grep -q "$CLAUDE_TOOLKIT_ROOT_ID" "<path>/.project_id" 2>/dev/null` 로 **반드시 ID 검증**.
+   - ID 일치 + `<path>/.claude/` 존재 → 즉시 확정, step 1~3 전부 스킵.
+   - ID 불일치/파일 없음 → `"사용자 제시 경로는 toolkit 레포가 아닙니다(ID 불일치)"` 고지 후 step 1 로 진행.
+   - **주의**: 대화상 언급된 경로를 ID 검증 없이 채택하지 말 것. 잘못된 경로 채택은 엉뚱한 디렉토리를 원본으로 오인해 `push` 시 치명적 파괴를 일으킬 수 있다.
+
 1. **환경변수 빠른 경로** — `$CLAUDE_TOOLKIT_ROOT`가 설정되어 있으면:
    - `grep -q "$CLAUDE_TOOLKIT_ROOT_ID" "$CLAUDE_TOOLKIT_ROOT/.project_id" 2>/dev/null` 로 매칭 확인.
    - 일치 → 그대로 사용하고 탐색 스킵.
@@ -62,14 +68,31 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
      - **Windows 사용자 프로필**: `$USERPROFILE` (win_bash 에서 `cygpath -u "$USERPROFILE"` 로 POSIX 경로 변환, 변환 실패 시 skip)
      - **상위 2단**: `$CLAUDE_PROJECT_DIR/..`, `$CLAUDE_PROJECT_DIR/../..`
    - 위 목록을 그대로 `test -d` 로 필터링하여 존재하는 것만 보존. 한쪽 OS 의 경로가 현재 환경에 없으면 자연히 탈락하므로, WSL 에서 호출해도 Windows 에서 호출해도 동일한 명세를 재사용할 수 있다.
-   - 잡음 폴더는 `prune`로 제외:
+   - 잡음 폴더는 `prune`로 제외하고, `timeout 10` 으로 전체 탐색 시간을 제한:
      ```
-     find <roots> \( -name node_modules -o -name .git -o -name .venv \
-         -o -name dist -o -name build \) -prune \
-         -o -type f -name '.project_id' -print 2>/dev/null
+     timeout 10 find <roots> \( \
+         -name node_modules -o -name .git -o -name .venv \
+         -o -name dist -o -name build -o -name .cache \
+         -o -name AppData -o -name Windows \
+         -o -name 'Program Files' -o -name 'Program Files (x86)' \
+         -o -name ProgramData -o -name System32 \
+         -o -name '$Recycle.Bin' -o -name Library \
+       \) -prune \
+       -o -type f -name '.project_id' -print 2>/dev/null
      ```
+   - `timeout` 이 exit 124 로 종료된 경우 탐색 결과가 불완전할 수 있음을 고지하고, 아래 **매칭 개수별 분기**의 **0-match 분기**로 진입해 `AskUserQuestion`(자유 텍스트)으로 경로를 직접 받는다.
    - 후보 각각에 대해 `grep -l "$CLAUDE_TOOLKIT_ROOT_ID" <file>` 로 ID 매칭 여부 확인.
    - **환경 보조 판정**: 매칭된 `.project_id` 경로가 `/mnt/*` 또는 `/c|/d|/e/*` 로 시작하면 Windows 파일시스템 위의 저장소라는 뜻이므로, 후속 복사(`cp -f`)에서 퍼미션/EOL 이슈가 날 수 있음을 보고에 같이 남긴다.
+   - **Cross-boundary fallback (dubious ownership 대응)**: `git -C "$TOOLKIT" …` 실행 중 `fatal: detected dubious ownership in repository` 가 감지되면 **스킬은 자동 전환을 하지 않고**, 아래 두 우회안 중 하나를 사용자에게 안내만 한다:
+     1. **`wsl.exe` 경유 실행** (Git Bash 에서 WSL 내부 레포 접근 시):
+        ```
+        wsl.exe -d <distro> -e bash -c 'cd "<TOOLKIT 경로>" && git …'
+        ```
+     2. **`safe.directory` 등록** (사용자 본인이 직접 실행):
+        ```
+        git config --global --add safe.directory "<TOOLKIT 경로>"
+        ```
+     스킬은 `git config` 를 자동 수정하지 않는다. 안내만 제공하며, 우회 명령은 사용자가 직접 수행해야 한다.
 
 3. **매칭 개수별 분기**:
    - **정확히 1개**: 그 파일의 부모 디렉토리를 `$CLAUDE_TOOLKIT_ROOT`으로 확정.
@@ -101,21 +124,31 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 - **양쪽 모두 존재하는 파일만** 원본 버전으로 덮어쓴다. 원본에만 있는 신규 파일은 **가져오지 않는다** (교집합 원칙).
 - 로컬에만 있는 파일(로컬 추가분)은 건드리지 않는다.
 - 절차:
-  1. 사전 계획: 갱신 예정 목록 / 원본-only 스킵 목록 / 로컬-only 보존 목록을 테이블로 표시하고 사용자 승인 대기.
-  2. 변경이 큰 항목은 `diff -u`로 샘플 몇 개를 사전 표시.
-  3. 실행: 각 대상에 대해 `cp -f "$TOOLKIT/.claude/<rel>" "$CLAUDE_PROJECT_DIR/.claude/<rel>"`.
+  1. **원본 dirty 사전 검사**: `git -C "$TOOLKIT" status --porcelain .claude` 실행.
+     - clean → 정상 진행.
+     - dirty → 경고 배너 출력:
+       > ⚠ 원본 `$TOOLKIT/.claude/` 에 커밋되지 않은 변경이 있습니다. pull 은 **커밋된 버전이 아닌 working tree 현재 상태**를 복사합니다.
+       dirty 파일 목록을 보여주고 사용자에게 계속할지 확인. 미확인 시 중단.
+  2. 사전 계획: 갱신 예정 목록 / 원본-only 스킵 목록 / 로컬-only 보존 목록을 테이블로 표시하고 사용자 승인 대기.
+  3. 변경이 큰 항목은 `diff -u`로 샘플 몇 개를 사전 표시.
+  4. 실행: 각 대상에 대해 `cp -f "$TOOLKIT/.claude/<rel>" "$CLAUDE_PROJECT_DIR/.claude/<rel>"`.
 - 결과 보고: `갱신 N · 동일 M · 원본-only 스킵 K · 로컬-only 보존 L`.
 
-### 2. `push` — 로컬 → 원본 + `git push`
+### 2. `push` [`--allow-dirty-origin`] — 로컬 → 원본 + `git push`
 
 - 로컬 `.claude/` 하위 전체를 원본 `$TOOLKIT/.claude/` 하위로 복사. 기존 파일은 **덮어쓰기**.
 - 원본에만 있던 파일(로컬에 없는 파일)은 **삭제하지 않음** (안전 기본값).
 - 절차:
-  1. 사전 계획: 복사 대상 / 신규 생성 / 덮어쓰기 목록을 보여주고 사용자 승인 대기.
-  2. 실행: `cp -f` 파일 단위 복사, 신규 상위 디렉토리는 `mkdir -p`.
-  3. `git -C "$TOOLKIT" status --porcelain .claude` 로 변경 확인.
-  4. 변경 없음 → `"푸시할 변경 없음"` 출력 후 종료.
-  5. 변경 있음 →
+  1. **원본 dirty 사전 검사 + 차단**: `git -C "$TOOLKIT" status --porcelain .claude` 를 **복사 전에 먼저** 실행.
+     - clean → 정상 진행.
+     - dirty → **기본적으로 중단**. 이유: 로컬 sync 분과 origin-로컬 미커밋 변경분이 같은 자동 커밋에 혼합되어 디버깅 불가능한 혼종 커밋이 만들어지기 때문.
+       - 사용자가 `push --allow-dirty-origin` 플래그를 **명시적으로** 넘긴 경우에만 진행. 이 경우에도 dirty 파일 목록 + "혼합 커밋이 생성될 수 있음" 경고를 반드시 표시.
+       - 그 외에는 `"원본 dirty — push 중단. 원본에서 먼저 커밋하거나 push --allow-dirty-origin 으로 강제 실행하세요."` 메시지와 함께 종료.
+  2. 사전 계획: 복사 대상 / 신규 생성 / 덮어쓰기 목록을 보여주고 사용자 승인 대기.
+  3. 실행: `cp -f` 파일 단위 복사, 신규 상위 디렉토리는 `mkdir -p`.
+  4. `git -C "$TOOLKIT" status --porcelain .claude` 로 변경 확인.
+  5. 변경 없음 → `"푸시할 변경 없음"` 출력 후 종료.
+  6. 변경 있음 →
      - `git -C "$TOOLKIT" add -A .claude`
      - `git -C "$TOOLKIT" diff --cached --stat .claude` 표시
      - diff 기반 **한국어 1줄** 커밋 메시지 자동 생성 (예: `commands: toolkit_merge_win 추가, skills/pdf2md 갱신`)
@@ -141,6 +174,7 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 ## 예시
 
 - `/toolkit_merge_win` → `diff`와 동일 (변경 미리보기만, 실제 파일 변경·`git commit`·`push` 없음).
-- `/toolkit_merge_win pull` → 원본의 최신 버전으로 로컬의 기존 파일만 갱신 (신규 파일 추가 없음).
-- `/toolkit_merge_win push` → 로컬 수정분을 원본에 복사 후 `git commit + push` (명시 지정해야 수행).
+- `/toolkit_merge_win pull` → 원본의 최신 버전으로 로컬의 기존 파일만 갱신 (신규 파일 추가 없음). 원본 dirty 면 경고 후 사용자 확인.
+- `/toolkit_merge_win push` → 로컬 수정분을 원본에 복사 후 `git commit + push`. **원본 dirty 면 기본 중단**.
+- `/toolkit_merge_win push --allow-dirty-origin` → 원본 dirty 에도 불구하고 강제 진행(혼합 커밋이 생성될 수 있음).
 - `/toolkit_merge_win diff` → 변경 미리보기만, 실제 변경은 수행하지 않음.
