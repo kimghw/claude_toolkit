@@ -1,9 +1,9 @@
 ---
-name: skill-authoring
+name: author-skill
 description: Claude Code Skill(SKILL.md) 작성 지침. 새 스킬을 만들거나 기존 스킬의 frontmatter·본문·보조파일 구조를 개정·리뷰할 때 사용. 파일 위치, YAML frontmatter 필드, description TRIGGER 패턴, progressive disclosure, 보조 파일 구성, 흔한 함정까지 다룬다. TRIGGER when 사용자가 스킬 작성·개정·리뷰, SKILL.md 작성, 스킬 템플릿 요청. DO NOT TRIGGER when 작업명세서(Work Unit spec)·서브에이전트 프롬프트·슬래시 커맨드 스크립트 작성.
 ---
 
-# skill-authoring — Claude Code Skill 작성 지침
+# author-skill — Claude Code Skill 작성 지침
 
 본 스킬은 **재사용 가능한 절차·노하우 패키지**인 Claude Code Skill을 어떻게 작성할지 정의한다. 한 스킬은 Claude가 **트리거 조건을 보고 자동 또는 명시적으로 호출**하여 사용할 수 있어야 한다.
 
@@ -55,6 +55,33 @@ Bundled·Custom은 **프롬프트 기반**(Claude가 오케스트레이션). Pre
 - 디렉토리명 = 스킬명 = `name` frontmatter 값 (소문자·하이픈, ≤64자).
 - `SKILL.md`가 유일한 필수 파일. 나머지는 본문에서 **참조 링크**로 지연 로드.
 - 동일 이름의 스킬이 여러 스코프에 존재하면 위 우선순위에 따라 상위 스코프가 이긴다.
+
+### 1.1 네이밍 컨벤션 (권장)
+
+**기본 규칙**
+
+- **kebab-case** — 소문자·숫자·하이픈만, ≤64자.
+- **디렉토리명 = `name` frontmatter = 본문 제목 슬러그** — 세 위치가 모두 일치해야 한다.
+- **약어·확장자는 소문자 그대로** — `md`, `docx`, `pdf`, `wu` 등 도메인 약어는 그대로 사용하고 축약을 만들지 않는다.
+
+**의도별 패턴**
+
+같은 카테고리의 스킬은 같은 패턴을 쓴다. 카테고리가 섞이면 디스커버리·기억·자동완성이 모두 나빠진다.
+
+| 패턴 | 규약 | 예시 | 언제 |
+|:---|:---|:---|:---|
+| **타입 변환** | `<src>2<dst>` | `pdf2md`, `md2wu`, `md2docx` | 한 입력 타입을 다른 출력 타입으로 변환 |
+| **실행 액션** | `<verb>-<object>` | `extract-docx-styles`, `scrape-krcon`, `author-skill` | 외부 대상에 능동 행위를 수행 |
+| **가이드/지침** | `<noun>` | `specification` | 작성·리뷰 지침(본질이 명사) |
+| **공용 메커니즘** | `<noun>-<noun>` | `queue-lock` | 재사용 구조·프로토콜 정의 |
+
+**일관성 요지**
+
+- **같은 카테고리 내 규약을 섞지 않는다** — 변환 스킬 일부만 `X2Y`, 나머지는 `verb-object-transform` 같은 혼용을 피한다.
+- **오타·모호 어휘 금지** — `scrap`(폐기) vs `scrape`(긁어오기) 같은 구분을 이름에서 잃지 않는다.
+- **동사 위치 통일** — `verb-object` 패턴을 택했으면 같은 카테고리 전체에 적용한다(`author-skill`, `extract-docx-styles` 동일 어순).
+- **접두사는 카테고리 분화가 실제 생길 때만** — 변환 스킬이 모두 문서라면 `doc-` 접두사는 정보를 추가하지 않는다. 비문서 변환이 실제로 생기는 시점에 도입한다(YAGNI).
+- **리네임은 참조까지 함께** — 디렉토리·`name`·본문 제목·`README` 카탈로그·다른 스킬의 링크·스크립트 docstring을 모두 갱신한다.
 
 ---
 

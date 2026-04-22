@@ -50,7 +50,7 @@ description: >
 
 ### TRIGGER / DO NOT TRIGGER 패턴 (Claude Code 로컬 관행)
 
-로컬 `skill-authoring`에서 채택된 패턴 — description 말미에 명시적으로 추가:
+로컬 `author-skill`에서 채택된 패턴 — description 말미에 명시적으로 추가:
 
 ```yaml
 description: >

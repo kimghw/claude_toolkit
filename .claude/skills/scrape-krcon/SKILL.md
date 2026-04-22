@@ -1,5 +1,5 @@
 ---
-name: scrap-krcon
+name: scrape-krcon
 description: "KR-CON (한국선급 IMO 협약 원문 DB, https://krcon.krs.co.kr) 문서 스크래핑. SOLAS, MARPOL, COLREG 등 협약 문서를 수집하거나, krcon_documents.json 갱신, 누락 ID 재수집, 트리 구조 재탐색이 필요할 때 사용. '크라콘 스크래핑', 'krcon 수집', 'IMO 협약 문서 수집' 요청에 대응."
 when_to_use: "krcon 스크래핑, krcon 수집, KR-CON 재수집, 누락 문서 수집, 세션 만료 후 재실행, SOLAS/MARPOL/COLREG 수집"
 allowed-tools: "Bash Read Write Edit Grep Glob"

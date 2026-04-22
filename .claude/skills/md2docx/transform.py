@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-md-docx-transform: Markdown -> DOCX 변환 + tblLook 자동 보정 + 검증 리포트
+md2docx: Markdown -> DOCX 변환 + tblLook 자동 보정 + 검증 리포트
 
 Usage:
   python transform.py --md input.md --ref template.docx --out output.docx
