@@ -217,6 +217,55 @@
 
         .item-name { flex-grow: 1; word-break: break-all; }
 
+        /* Assist Panel */
+        .assist-panel {
+            background-color: var(--panel-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 14px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .assist-panel .assist-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        .assist-panel .assist-title .hint {
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+        .assist-panel .assist-row {
+            display: flex;
+            gap: 10px;
+        }
+        .assist-panel input[type="text"] {
+            flex-grow: 1;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0 12px;
+            height: 40px;
+            color: var(--text-primary);
+            font-family: var(--font-main);
+            font-size: 14px;
+            outline: none;
+        }
+        .assist-panel input[type="text"]:focus { border-color: var(--primary-btn-bg); }
+        .assist-panel .assist-reason {
+            font-size: 12px;
+            color: var(--text-secondary);
+            min-height: 16px;
+            font-family: var(--font-mono);
+            word-break: break-word;
+        }
+        .assist-panel .assist-reason.err { color: var(--log-err); }
+
         /* Log Panel */
         .log-panel {
             background-color: var(--log-color);
@@ -380,6 +429,19 @@
             </div>
         </div>
     </main>
+
+    <div class="assist-panel">
+        <div class="assist-title">
+            🤖 Claude 어시스트
+            <span class="hint">질문을 입력하면 관련 항목을 자동으로 선택합니다.</span>
+        </div>
+        <div class="assist-row">
+            <input type="text" id="assistQuery" placeholder="예: PDF를 마크다운으로 바꾸고 싶어 / git 작업 자동화 커맨드 찾아줘" autocomplete="off">
+            <button class="primary" id="assistBtn" onclick="runAssist()">질의</button>
+            <button class="secondary" onclick="clearAssistSelection()" title="어시스트가 켠 체크박스만 해제">이전 선택 해제</button>
+        </div>
+        <div class="assist-reason" id="assistReason"></div>
+    </div>
 
     <div class="log-panel">
         <h3>실행 로그</h3>
@@ -678,6 +740,88 @@ async function runExport() {
     btn.textContent = "Export 실행";
   }
 }
+
+let lastAssistItems = [];
+
+async function runAssist() {
+  const input = $("#assistQuery");
+  const q = input.value.trim();
+  const reason = $("#assistReason");
+  if (!q) {
+    reason.classList.add("err");
+    reason.textContent = "질의 내용을 입력하세요.";
+    input.focus();
+    return;
+  }
+  const btn = $("#assistBtn");
+  btn.disabled = true;
+  btn.textContent = "질의 중…";
+  reason.classList.remove("err");
+  reason.textContent = "claude CLI 호출 중 (최대 90초)…";
+  log(`[assist] "${q}"`, "info");
+
+  try {
+    const r = await fetch("/api/assist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: q }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || r.status);
+    }
+    const data = await r.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    lastAssistItems = items;
+
+    if (items.length === 0) {
+      reason.classList.add("err");
+      reason.textContent = data.reason || "관련 항목을 찾지 못했습니다.";
+      log("[assist] 관련 항목 없음", "err");
+      return;
+    }
+
+    let checked = 0;
+    for (const rel of items) {
+      const cb = document.querySelector(`.itembox[value="${CSS.escape(rel)}"]`);
+      if (cb && !cb.checked) {
+        cb.checked = true;
+        checked += 1;
+      }
+    }
+    updateCounter();
+
+    reason.textContent = data.reason || `${items.length}개 선택됨`;
+    log(`[assist] ${items.length}개 제안 (신규 선택 ${checked}개)`, "ok");
+    for (const it of items) log(`  ↳ ${it}`, "ok");
+  } catch (e) {
+    reason.classList.add("err");
+    reason.textContent = `오류: ${e.message}`;
+    log(`[assist] 오류: ${e.message}`, "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "질의";
+  }
+}
+
+function clearAssistSelection() {
+  if (lastAssistItems.length === 0) return;
+  for (const rel of lastAssistItems) {
+    const cb = document.querySelector(`.itembox[value="${CSS.escape(rel)}"]`);
+    if (cb) cb.checked = false;
+  }
+  updateCounter();
+  lastAssistItems = [];
+  $("#assistReason").textContent = "이전 어시스트 선택을 해제했습니다.";
+  log("[assist] 이전 선택 해제", "info");
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.target && e.target.id === "assistQuery" && e.key === "Enter") {
+    e.preventDefault();
+    runAssist();
+  }
+});
 
 document.addEventListener('DOMContentLoaded', loadTree);
 </script>

@@ -8,6 +8,7 @@ at the target (symlink/copy) or inside the ZIP archive.
 from __future__ import annotations
 
 import io
+import json
 import os
 import platform
 import re
@@ -482,6 +483,123 @@ def github_export(req: ExportRequest):
         "items": req.items,
         "stray_symlinks": stray_links,
     }
+
+
+class AssistRequest(BaseModel):
+    query: str
+
+
+def _list_tree_items() -> list[str]:
+    items: list[str] = []
+    for cat in CATEGORIES:
+        cat_path = SOURCE_ROOT / cat
+        if not cat_path.exists():
+            continue
+        for e in sorted(cat_path.iterdir(), key=lambda p: p.name.lower()):
+            items.append(f"{cat}/{e.name}")
+    return items
+
+
+_ASSIST_SYSTEM = (
+    "You are a selector for a curated catalog of Claude Code assets "
+    "(skills / agents / commands / references). "
+    "Given a user's Korean/English query and the CATALOG below, pick the "
+    "entries most relevant to the query. "
+    "Output MUST be a single JSON object only, no prose, no code fences:\n"
+    '{"items": ["<cat>/<name>", ...], "reason": "<one short sentence in the user\'s language>"}\n'
+    "Rules:\n"
+    "- Each item MUST appear verbatim in CATALOG. Never invent names.\n"
+    "- Prefer precision: if nothing clearly matches, return an empty items list.\n"
+    "- Max 8 items. Order by relevance.\n"
+)
+
+
+def _extract_json_object(text: str) -> dict:
+    """Extract the first top-level JSON object from a text blob."""
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("no JSON object in response")
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(text[start : i + 1])
+    raise ValueError("unbalanced JSON object in response")
+
+
+@app.post("/api/assist")
+def assist(req: AssistRequest):
+    query = (req.query or "").strip()
+    if not query:
+        raise HTTPException(400, "query is empty")
+    if shutil.which("claude") is None:
+        raise HTTPException(
+            500,
+            "claude CLI not found in PATH. Install Claude Code CLI and run "
+            "`claude /login` first.",
+        )
+
+    catalog = _list_tree_items()
+    if not catalog:
+        return {"items": [], "reason": "카탈로그가 비어 있습니다.", "raw": ""}
+
+    catalog_block = "\n".join(f"- {rel}" for rel in catalog)
+    prompt = (
+        f"{_ASSIST_SYSTEM}\n\n"
+        f"CATALOG:\n{catalog_block}\n\n"
+        f"USER QUERY:\n{query}\n"
+    )
+
+    try:
+        cp = subprocess.run(
+            ["claude", "-p", prompt],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "claude CLI timed out (90s)")
+    except OSError as exc:
+        raise HTTPException(500, f"failed to launch claude CLI: {exc}")
+
+    if cp.returncode != 0:
+        raise HTTPException(
+            500,
+            f"claude CLI exited {cp.returncode}: {cp.stderr.strip() or cp.stdout.strip()}",
+        )
+
+    raw = cp.stdout.strip()
+    try:
+        obj = _extract_json_object(raw)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            500,
+            f"failed to parse JSON from claude output: {exc}\n---\n{raw[:2000]}",
+        )
+
+    allowed = set(catalog)
+    items_raw = obj.get("items", [])
+    if not isinstance(items_raw, list):
+        items_raw = []
+    items = [str(x) for x in items_raw if isinstance(x, str) and x in allowed]
+    reason = str(obj.get("reason", "")).strip()
+    return {"items": items, "reason": reason, "raw": raw}
 
 
 @app.get("/")

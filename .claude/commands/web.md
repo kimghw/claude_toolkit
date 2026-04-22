@@ -151,3 +151,12 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 - `/web bg 9000` → 백그라운드, 포트 9000.
 - `/web status` → 현재 상태 조회.
 - `/web stop` → 실행 중이면 종료.
+
+## Claude 어시스트 (UI 기능)
+
+웹 UI 하단에 `🤖 Claude 어시스트` 패널이 있다. 자연어 질의를 입력하면 현재 카탈로그(`skills/agents/commands/references`) 중 관련 항목의 체크박스를 자동으로 켜준다.
+
+- **백엔드**: `POST /api/assist` — 서버가 PATH 상의 `claude` CLI (`claude -p`)를 서브프로세스로 호출. 최대 90초 대기.
+- **응답 형식**: `{"items": ["skills/md2wu", ...], "reason": "..."}` 엄격 화이트리스트 (카탈로그에 없는 이름은 폐기).
+- **Enter 키**로도 질의 가능. `이전 선택 해제` 버튼은 마지막 어시스트가 켠 체크박스만 해제한다 (사용자가 수동으로 켠 항목은 유지).
+- **사전조건**: `claude` CLI 가 PATH 에 있어야 하며 `claude /login` 인증이 완료되어 있어야 한다. 미설치/미인증 시 UI 로그에 오류 표시.
