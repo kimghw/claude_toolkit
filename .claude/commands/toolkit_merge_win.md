@@ -42,11 +42,26 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
    - 일치 → 그대로 사용하고 탐색 스킵.
    - 불일치/파일 없음 → 환경변수 무효로 간주. `"CLAUDE_TOOLKIT_ROOT이 유효하지 않음 — 재탐색합니다"` 고지 후 다음 단계로 폴백.
 
-2. **파일명 기반 탐색 (느린 경로)**:
-   - 탐색 루트 후보(존재하는 것만, 중복 제거):
-     - `/mnt/c /mnt/d /mnt/e` (Windows 드라이브 마운트)
-     - `$HOME`, `/home`
-     - `$CLAUDE_PROJECT_DIR/..`, `$CLAUDE_PROJECT_DIR/../..` (상위 2단)
+2. **파일명 기반 탐색 (느린 경로)** — **WSL · Windows 양측 루트를 모두 포함**한다:
+   - 현재 OS 감지:
+     ```
+     UNAME="$(uname -s 2>/dev/null || echo unknown)"
+     case "$UNAME" in
+       Linux*)
+         if grep -qi microsoft /proc/version 2>/dev/null; then OS_KIND="wsl";
+         else OS_KIND="linux"; fi ;;
+       Darwin*)              OS_KIND="darwin" ;;
+       MINGW*|MSYS*|CYGWIN*) OS_KIND="win_bash" ;;
+       *)                    OS_KIND="unknown" ;;
+     esac
+     ```
+   - 탐색 루트 후보(OS 무관하게 **WSL 쪽 + Windows 쪽 경로를 같이** 구성한 뒤, 존재하는 것만 남기고 중복 제거):
+     - **WSL/Linux 쪽**: `$HOME`, `/home`
+     - **WSL 에서 본 Windows 드라이브**: `/mnt/c /mnt/d /mnt/e` (WSL 에서만 실제 존재)
+     - **Windows(Git Bash/MSYS/Cygwin) 드라이브 루트**: `/c /d /e` (win_bash 환경에서만 실제 존재)
+     - **Windows 사용자 프로필**: `$USERPROFILE` (win_bash 에서 `cygpath -u "$USERPROFILE"` 로 POSIX 경로 변환, 변환 실패 시 skip)
+     - **상위 2단**: `$CLAUDE_PROJECT_DIR/..`, `$CLAUDE_PROJECT_DIR/../..`
+   - 위 목록을 그대로 `test -d` 로 필터링하여 존재하는 것만 보존. 한쪽 OS 의 경로가 현재 환경에 없으면 자연히 탈락하므로, WSL 에서 호출해도 Windows 에서 호출해도 동일한 명세를 재사용할 수 있다.
    - 잡음 폴더는 `prune`로 제외:
      ```
      find <roots> \( -name node_modules -o -name .git -o -name .venv \
@@ -54,6 +69,7 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
          -o -type f -name '.project_id' -print 2>/dev/null
      ```
    - 후보 각각에 대해 `grep -l "$CLAUDE_TOOLKIT_ROOT_ID" <file>` 로 ID 매칭 여부 확인.
+   - **환경 보조 판정**: 매칭된 `.project_id` 경로가 `/mnt/*` 또는 `/c|/d|/e/*` 로 시작하면 Windows 파일시스템 위의 저장소라는 뜻이므로, 후속 복사(`cp -f`)에서 퍼미션/EOL 이슈가 날 수 있음을 보고에 같이 남긴다.
 
 3. **매칭 개수별 분기**:
    - **정확히 1개**: 그 파일의 부모 디렉토리를 `$CLAUDE_TOOLKIT_ROOT`으로 확정.
