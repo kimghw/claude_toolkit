@@ -1,13 +1,13 @@
 ---
-name: author-skill
+name: howto-skill
 description: Claude Code Skill(SKILL.md) 작성 지침. 새 스킬을 만들거나 기존 스킬의 frontmatter·본문·보조파일 구조를 개정·리뷰할 때 사용. 파일 위치, YAML frontmatter 필드, description TRIGGER 패턴, progressive disclosure, 보조 파일 구성, 흔한 함정까지 다룬다. TRIGGER when 사용자가 스킬 작성·개정·리뷰, SKILL.md 작성, 스킬 템플릿 요청. DO NOT TRIGGER when 작업명세서(Work Unit spec)·서브에이전트 프롬프트·슬래시 커맨드 스크립트 작성.
 ---
 
-# author-skill — Claude Code Skill 작성 지침
+# howto-skill — Claude Code Skill 작성 지침
 
 본 스킬은 **재사용 가능한 절차·노하우 패키지**인 Claude Code Skill을 어떻게 작성할지 정의한다. 한 스킬은 Claude가 **트리거 조건을 보고 자동 또는 명시적으로 호출**하여 사용할 수 있어야 한다.
 
-> 일회성 작업 지시(작업명세서)가 아니다. 영속적 자산으로서 여러 작업에서 재사용되는 **HOW**를 기술한다. 작업명세서(WHAT)는 `specification` 스킬 참조.
+> 일회성 작업 지시(작업명세서)가 아니다. 영속적 자산으로서 여러 작업에서 재사용되는 **HOW**를 기술한다. 작업명세서(WHAT)는 `howto-spec` 스킬 참조.
 
 ---
 
@@ -71,16 +71,16 @@ Bundled·Custom은 **프롬프트 기반**(Claude가 오케스트레이션). Pre
 | 패턴 | 규약 | 예시 | 언제 |
 |:---|:---|:---|:---|
 | **타입 변환** | `<src>2<dst>` | `pdf2md`, `md2wu`, `md2docx` | 한 입력 타입을 다른 출력 타입으로 변환 |
-| **실행 액션** | `<verb>-<object>` | `extract-docx-styles`, `scrape-krcon`, `author-skill` | 외부 대상에 능동 행위를 수행 |
-| **가이드/지침** | `<noun>` | `specification` | 작성·리뷰 지침(본질이 명사) |
-| **공용 메커니즘** | `<noun>-<noun>` | `queue-lock` | 재사용 구조·프로토콜 정의 |
+| **실행 액션** | `<verb>-<object>` | `extract-docx-styles`, `scrape-krcon` | 외부 대상에 능동 행위를 수행 (verb-object 어순) |
+| **작성/도입 지침** | `howto-<subject>` | `howto-skill`, `howto-spec`, `howto-queue-lock` | 호출자가 무언가를 작성·도입하기 위한 가이드 문서 |
 
 **일관성 요지**
 
 - **같은 카테고리 내 규약을 섞지 않는다** — 변환 스킬 일부만 `X2Y`, 나머지는 `verb-object-transform` 같은 혼용을 피한다.
 - **오타·모호 어휘 금지** — `scrap`(폐기) vs `scrape`(긁어오기) 같은 구분을 이름에서 잃지 않는다.
-- **동사 위치 통일** — `verb-object` 패턴을 택했으면 같은 카테고리 전체에 적용한다(`author-skill`, `extract-docx-styles` 동일 어순).
-- **접두사는 카테고리 분화가 실제 생길 때만** — 변환 스킬이 모두 문서라면 `doc-` 접두사는 정보를 추가하지 않는다. 비문서 변환이 실제로 생기는 시점에 도입한다(YAGNI).
+- **동사 위치 통일** — `verb-object` 패턴을 택했으면 같은 카테고리 전체에 적용한다.
+- **카테고리 접두사는 3개 이상 모일 때 유효** — 동일 카테고리의 스킬이 누적되어야 `howto-*`·`doc-*` 같은 접두사의 묶음 이득이 생긴다. 1~2개뿐이면 접두사 없이도 충분하다.
+- **"지침" 카테고리는 `howto-`** — 결과물이 문서·시스템 어느 쪽이든, 호출자가 **무언가를 만들 때 따를 규약·방법**을 가르치는 스킬은 `howto-<subject>` 규약을 따른다. 메커니즘 사양과 가이드가 혼재하는 스킬(예: `howto-queue-lock`)도 여기 속한다.
 - **리네임은 참조까지 함께** — 디렉토리·`name`·본문 제목·`README` 카탈로그·다른 스킬의 링크·스크립트 docstring을 모두 갱신한다.
 
 ---

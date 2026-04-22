@@ -22,4 +22,4 @@ Anthropic이 공개한 **skill-creator** 스킬(원본: `~/.codex/skills/.system
 
 ## 관련 로컬 스킬
 
-- `.claude/skills/author-skill/SKILL.md` — 한국어로 현지화된 Skill 작성 지침 (trigger 패턴, 흔한 함정 추가 수록)
+- `.claude/skills/howto-skill/SKILL.md` — 한국어로 현지화된 Skill 작성 지침 (trigger 패턴, 흔한 함정 추가 수록)

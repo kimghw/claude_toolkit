@@ -7,7 +7,7 @@ description: PDF를 구조화된 마크다운으로 변환. 원문 텍스트 무
 
 본 스킬은 PDF 파일을 원문 손실 없이 구조화된 마크다운으로 변환하는 절차를 정의한다. 50페이지 단위로 서브에이전트(opus 모델)를 병렬 할당하고, 각 에이전트는 담당 페이지 추출물을 Read 도구로 직접 읽어 변환하며, 이미지는 별도 파일로 추출하여 링크로 참조한다. **라운드당 최대 40개 서브에이전트**를 기동하며, **1개 파일의 모든 파트는 동일 라운드에서 처리**된다(파일 중간 분절 금지). **한 오케스트레이터 실행에서 총 파트(= 총 서브에이전트) 수는 기본 100개 이하(사용자 승인 시 초과 허용), 파일당 파트 수는 40개 이하(우회 불가)**이다.
 
-본 스킬은 [queue-lock](../queue-lock/SKILL.md)의 락·큐 규약을 채택한다. 락 JSON 스키마·상태 전이·스테일·크래시 복구는 [queue-lock §3](../queue-lock/SKILL.md)을 그대로 따르며, 본 문서에는 pdf2md 고유 값(`<item_id> = <input>`, `state = pending|working|merging|failed`, `<caller_dirs> = pdf_parts/`·`assets/`·`out/`)과 변환 파이프라인만 선언한다.
+본 스킬은 [howto-queue-lock](../howto-queue-lock/SKILL.md)의 락·큐 규약을 채택한다. 락 JSON 스키마·상태 전이·스테일·크래시 복구는 [howto-queue-lock §3](../howto-queue-lock/SKILL.md)을 그대로 따르며, 본 문서에는 pdf2md 고유 값(`<item_id> = <input>`, `state = pending|working|merging|failed`, `<caller_dirs> = pdf_parts/`·`assets/`·`out/`)과 변환 파이프라인만 선언한다.
 
 ## 스킬 구조
 
@@ -50,7 +50,7 @@ description: PDF를 구조화된 마크다운으로 변환. 원문 텍스트 무
 - **조건 플래그**: 오케스트레이터가 분해 시 확정하여 프롬프트 슬롯에 주입하는 파트별 메타데이터(`part_index`, `is_first_part` 등). 서브에이전트의 조건부 분기 행동을 결정한다.
 - **라운드(Round)**: 한 번의 병렬 배치 실행 사이클. **라운드당 서브에이전트 수는 최대 40개(절대 상한)**. 1개 파일의 파트는 반드시 동일 라운드에 포함되며(중간 분절 금지), 여러 파일을 라운드 용량(40) 한도 내에서 묶어 실행한다. **전체 실행(모든 라운드 합산)에서 서브에이전트 수는 최대 100개(절대 상한)**이다. 총 100 / 라운드당 40이므로 최대 라운드 수는 `ceil(100/40) = 3`이다.
 - **세션 ID(session_id)**: Claude Code가 세션마다 자동 부여하는 UUID(`~/.claude/projects/<project>/` 내 `.jsonl` 파일명). 글로벌 락의 owner 기록과 로그 식별자로 사용한다. 별도 발급 절차 없이 현재 세션 ID를 그대로 쓴다.
-- **글로벌 락(Global Lock)**: `<workroot>/queue/locks/<input>.lock` **단일 JSON 파일(정규 파일, 디렉토리 아님)**. 여러 오케스트레이터가 같은 `<workroot>`를 공유할 때 **파일 단위 배타 점유**를 보장하여 동일 작업 중복 실행을 방지한다. 파일 내용은 [queue-lock §3](../queue-lock/SKILL.md) 스키마를 따르는 단일 라인 JSON `{"owner":"<session_id>","state":"pending|working|merging|failed","claimed_at":"<ISO8601>","updated_at":"<ISO8601>"}`이다. `owner`·`claimed_at`은 불변, `state`·`updated_at`은 상태 전이 시 atomic replace로 갱신한다.
+- **글로벌 락(Global Lock)**: `<workroot>/queue/locks/<input>.lock` **단일 JSON 파일(정규 파일, 디렉토리 아님)**. 여러 오케스트레이터가 같은 `<workroot>`를 공유할 때 **파일 단위 배타 점유**를 보장하여 동일 작업 중복 실행을 방지한다. 파일 내용은 [howto-queue-lock §3](../howto-queue-lock/SKILL.md) 스키마를 따르는 단일 라인 JSON `{"owner":"<session_id>","state":"pending|working|merging|failed","claimed_at":"<ISO8601>","updated_at":"<ISO8601>"}`이다. `owner`·`claimed_at`은 불변, `state`·`updated_at`은 상태 전이 시 atomic replace로 갱신한다.
 
 ## 2. 입력 / 출력 규약
 
@@ -85,7 +85,7 @@ description: PDF를 구조화된 마크다운으로 변환. 원문 텍스트 무
 
 - **글로벌 락 프로토콜**:
   - **점유 시도**: `<workroot>/queue/locks/<input>.lock` 파일을 `O_CREAT|O_EXCL|O_WRONLY`로 생성 시도(Python 기준 `open(path, "x")`). POSIX `open(2) + O_EXCL`은 원자적이며 파일이 이미 존재하면 `EEXIST`로 실패한다. 실패 = 다른 오케스트레이터가 점유 중 → 해당 파일을 스킵하고 다음 파일로 진행한다.
-  - **점유 성공 시 즉시 기록**: 생성된 파일 핸들에 `{"owner":"<session_id>","state":"pending","claimed_at":"<ISO8601>","updated_at":"<ISO8601>"}` 단일 라인 JSON을 **한 번의 `write()`로 기록한 뒤 닫는다**. 이렇게 하면 빈 파일 관찰 창을 최소화할 수 있으나 [queue-lock §3.1](../queue-lock/SKILL.md)이 명시한 대로 완전히 제거하지는 못한다 — 락 본문을 읽는 측은 빈 파일/JSON 파싱 실패를 "점유 진행 중"으로 해석하는 queue-lock 규약을 따른다.
+  - **점유 성공 시 즉시 기록**: 생성된 파일 핸들에 `{"owner":"<session_id>","state":"pending","claimed_at":"<ISO8601>","updated_at":"<ISO8601>"}` 단일 라인 JSON을 **한 번의 `write()`로 기록한 뒤 닫는다**. 이렇게 하면 빈 파일 관찰 창을 최소화할 수 있으나 [howto-queue-lock §3.1](../howto-queue-lock/SKILL.md)이 명시한 대로 완전히 제거하지는 못한다 — 락 본문을 읽는 측은 빈 파일/JSON 파싱 실패를 "점유 진행 중"으로 해석하는 howto-queue-lock 규약을 따른다.
   - **상태 전이 (atomic replace 규약, 필수)**: `state`를 `pending → working → merging`(또는 `failed`)로 갱신할 때는 **절대로 기존 락 파일을 `open("w")`로 덮어쓰지 않는다**. 같은 디렉토리에 임시 파일 `<input>.lock.tmp.<pid>`를 생성하여 새 JSON(`state`와 `updated_at`을 함께 현재 시각으로 갱신; `owner`·`claimed_at`은 불변)을 기록한 뒤 `os.rename(<tmp>, <lockfile>)`로 원자 교체한다(POSIX `rename(2)` 원자성). 덮어쓰기 방식은 다른 오케스트레이터가 반쯤 쓰인 JSON을 읽을 수 있으므로 금지한다.
   - **해제**: 해당 파일의 병합·검증·최종 배치가 성공하면 `os.unlink(<workroot>/queue/locks/<input>.lock)` (쉘에서는 `rm <workroot>/queue/locks/<input>.lock`, **`rm -rf` 금지**). 실패(재시도 임계 초과 포함)로 종료하면 락 파일을 삭제하지 않고 atomic replace 규약으로 `state=failed`만 갱신한 채 남겨 사용자에게 수동 복구를 요청한다.
   - **스테일 락**: 락 파일의 mtime이 `stale_threshold`(기본 4시간) 이상이고 `state`가 진행 중이면 사용자에게 보고한다. 상태 전이 시마다 atomic replace으로 mtime이 갱신되므로 살아있는 오케스트레이터의 락은 자연스럽게 "살아있음" 신호를 남긴다. **자동 탈취는 하지 않는다**(오진행 중인 다른 오케스트레이터의 작업을 덮어쓸 위험).
@@ -150,7 +150,7 @@ description: PDF를 구조화된 마크다운으로 변환. 원문 텍스트 무
      - **실패** (`EEXIST`, 다른 오케스트레이터가 점유 중): 해당 파일을 스킵하고 사용자에게 보고. 다음 파일로 진행.
      - **성공**: 즉시 `{"owner":"<session_id>","state":"pending","claimed_at":"<ISO8601>","updated_at":"<ISO8601>"}` 단일 라인 JSON을 **한 번의 `write()`로 기록**하고 파일 핸들을 닫는다.
    - 파일당 `ceil(total/50)`개 구간을 계산(이미 절차 1에서 검증된 값, 40 이하).
-   - 점유 성공 파일들의 파트 수를 누적하여 **총 파트 수 ≤ 100**(= `session_capacity`)을 유지한다. 초과 예정이면 해당 파일과 그 이후 파일은 **락 claim을 시도하지 않고, pending 적재도 하지 않은 채** 다음 세션/계정이 가져갈 수 있도록 원본 상태로 보존한다([queue-lock §6.6](../queue-lock/SKILL.md)). 사용자에게는 "N개 파일을 다른 세션용으로 보존함"을 보고한다.
+   - 점유 성공 파일들의 파트 수를 누적하여 **총 파트 수 ≤ 100**(= `session_capacity`)을 유지한다. 초과 예정이면 해당 파일과 그 이후 파일은 **락 claim을 시도하지 않고, pending 적재도 하지 않은 채** 다음 세션/계정이 가져갈 수 있도록 원본 상태로 보존한다([howto-queue-lock §6.6](../howto-queue-lock/SKILL.md)). 사용자에게는 "N개 파일을 다른 세션용으로 보존함"을 보고한다.
    - 각 구간에 대해 **조건 플래그**를 확정한다(3.3 참조).
    - 각 구간마다 **담당 페이지 추출물**을 사전 생성하여 `<workroot>/queue/sessions/<session_id>/pdf_parts/<input>__partNN.pdf`에 저장.
      - **권장 (qpdf)**: `qpdf <input>.pdf --pages <input>.pdf <start>-<end> -- <workroot>/queue/sessions/<session_id>/pdf_parts/<input>__partNN.pdf`

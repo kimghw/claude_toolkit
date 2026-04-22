@@ -21,11 +21,11 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 
 ## 용어 (Terminology)
 
-본 스킬은 [queue-lock](../queue-lock/SKILL.md)의 규약을 채택한다. 키 간 포함 관계는 다음과 같다.
+본 스킬은 [howto-queue-lock](../howto-queue-lock/SKILL.md)의 규약을 채택한다. 키 간 포함 관계는 다음과 같다.
 
 | 용어 | 정의 | 예시 | 역할 |
 |:---|:---|:---|:---|
-| `item_id` | **락·배치의 최소 단위**. 1 MD 파일 = 1 item. `doc_instance_key`와 동일 값이며, 이미 `{authority}_{doc_type}_` 접두사를 포함한다. | `iacs_ur_z10_3_rev21_en` (`iacs_ur_` = authority+doc_type, `z10_3_rev21_en` = 문서 고유부) | queue-lock `<item_id>` |
+| `item_id` | **락·배치의 최소 단위**. 1 MD 파일 = 1 item. `doc_instance_key`와 동일 값이며, 이미 `{authority}_{doc_type}_` 접두사를 포함한다. | `iacs_ur_z10_3_rev21_en` (`iacs_ur_` = authority+doc_type, `z10_3_rev21_en` = 문서 고유부) | howto-queue-lock `<item_id>` |
 | `doc_instance_key` | item 식별자의 정본. `item_id`와 동일 값 (접두사 포함). | 위와 동일 | 파일 고유 ID |
 | `source_family` | 헤딩 패턴·문서 구조 규칙을 공유하는 분류 단위 (Stage 3에서 확정). | `iacs_ur`, `iacs_ui`, `imo_solas` | 배치 그룹화 1차 키 |
 | `series` | 같은 `source_family` 내부에서 번호 연속성을 갖는 문서 묶음. `corpus_scope`의 마지막 요소로 들어가는 정규화 키(소문자, 접두사 없음)이며, 세부 서브번호(`Z10`, `Z11`, `E26` 등)는 `series_order`로 표현한다. | `z` (UR Z 시리즈), `e` (UR E 시리즈), `s` (S-series) | 배치 그룹화 2차 키 |
@@ -255,7 +255,7 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 
 `scan_index.json`의 item 목록을 받아 **`batch_capacity` 이하**로 배치를 구성한다. 기본값은 `600K` 토큰(사용자/메모리 오버라이드 가능; 200K 등).
 
-#### B-0. 스킵 판정 ([queue-lock §5](../queue-lock/SKILL.md))
+#### B-0. 스킵 판정 ([howto-queue-lock §5](../howto-queue-lock/SKILL.md))
 1. 전역 경로의 `merge_index.json`을 로드한다 (없으면 초기 실행으로 간주, 스킵 없음).
 2. `merge_index.json`의 `corpora.{scope}.item_to_wu[item_id]`가 존재하고, 매핑이 가리키는 **모든** `wu_key`에 대해 전역 `wu-{wu_key}__pre__content.md` 파일이 존재하며 0바이트가 아닐 때 본 실행에서 제외한다 (하나라도 누락이면 미처리로 간주). 세션 로컬 매니페스트(T2)는 스킵 판정에 사용하지 않는다 — 전역 SSOT는 `merge_index.json` 하나다.
 3. `merge_index.json`은 Merged WU·Split WU 포함 모든 WU 유형에 대해 `item_id → [wu_keys]` (list) 관계를 명시한다. Merged WU(복수 item → 단일 WU), Split WU(단일 item → 복수 WU) 모두 정확히 감지된다. 하위 호환: 레거시 `item_id → wu_key` (string) 매핑도 단일 원소 리스트로 해석한다.
@@ -268,22 +268,22 @@ Phase B 진입 전에 Stage 1의 메타데이터로 **모든 item에 provisional
 1. **1차 그룹**: `source_family` — 서로 다른 family는 같은 배치에 넣지 않는다.
 2. **2차 그룹**: `series` — 같은 family 내부에서 series별로 묶는다.
 3. **series 내부 정렬**: `series_order` 오름차순 (연속성 유지). series 없는 item은 `doc_instance_key` 보조 정렬.
-4. **그룹 간 배치 선택 우선순위**: 큰 그룹(합산 `cost_tokens` 큰 순)부터 배치화 ([queue-lock §6.3](../queue-lock/SKILL.md) 큰 아이템 우선 원칙).
+4. **그룹 간 배치 선택 우선순위**: 큰 그룹(합산 `cost_tokens` 큰 순)부터 배치화 ([howto-queue-lock §6.3](../howto-queue-lock/SKILL.md) 큰 아이템 우선 원칙).
 
-#### B-3. NFD 패킹 ([queue-lock §6.2](../queue-lock/SKILL.md))
+#### B-3. NFD 패킹 ([howto-queue-lock §6.2](../howto-queue-lock/SKILL.md))
 각 `(source_family, series)` 단위로 Next-Fit Decreasing을 적용:
 1. 현재 배치 합 + `item.cost_tokens` ≤ `batch_capacity` → 현재 배치에 추가.
 2. 초과 시 현재 배치를 닫고 새 배치를 연다.
 3. **series 연속성 우선**: 예산에 여유가 있는 한 같은 series는 같은 배치에 유지. 예산을 초과하는 시점에만 series 경계에서 분리한다.
-4. 단일 item이 `batch_capacity`를 초과하면 [queue-lock §6.1](../queue-lock/SKILL.md) 규칙에 따라 사용자에게 물리 분할을 요청하고 이번 실행에서 제외한다.
+4. 단일 item이 `batch_capacity`를 초과하면 [howto-queue-lock §6.1](../howto-queue-lock/SKILL.md) 규칙에 따라 사용자에게 물리 분할을 요청하고 이번 실행에서 제외한다.
 
-#### B-4. 세션 점유 (multi-session handoff, [queue-lock §6.6](../queue-lock/SKILL.md))
+#### B-4. 세션 점유 (multi-session handoff, [howto-queue-lock §6.6](../howto-queue-lock/SKILL.md))
 - `session_capacity` 기본값은 `batch_capacity`와 동일 (**한 세션 = 1 배치**).
 - 첫 배치(우선순위 가장 높은 family·series)만 락 claim하고 나머지 배치는 **락·pending 모두 건드리지 않고** 보존한다.
 - 보존된 배치는 `batch_plan.json`에 기록하되 `status: "reserved_for_other_session"`으로 표기한다.
 - 단, 이 필드는 **세션 로컬 기록(관찰성)용**이며, 다른 세션과의 실제 조율은 글로벌 락(`EEXIST`)과 산출물 스킵 판정(§5)으로만 이루어진다.
 - 다른 세션이 기동되면 §5 스킵 판정 후 남은 item을 같은 방식으로 가져간다.
-- **사용자 알림 (필수)**: 이번 세션이 claim한 배치의 모든 item에 대해 락 점유(`O_CREAT|O_EXCL` + 초기 JSON 기록, [queue-lock §3.1](../queue-lock/SKILL.md))가 완료되면 **사용자에게 즉시 "락 작업이 완료되었음"을 보고**한다. 보고에는 다음을 포함한다 — `batch_id`, `source_family`·`series_keys`, 점유한 item 수·`item_id` 목록(많으면 요약), 락 파일 경로 템플릿(`skill_md2wu/queue/locks/<item_id>.lock`), `session_id`, 점유 시각, `reserved_for_other_session`으로 남겨둔 배치 수. 이 알림 이후에 Phase C(S3-7) 실행을 시작한다.
+- **사용자 알림 (필수)**: 이번 세션이 claim한 배치의 모든 item에 대해 락 점유(`O_CREAT|O_EXCL` + 초기 JSON 기록, [howto-queue-lock §3.1](../howto-queue-lock/SKILL.md))가 완료되면 **사용자에게 즉시 "락 작업이 완료되었음"을 보고**한다. 보고에는 다음을 포함한다 — `batch_id`, `source_family`·`series_keys`, 점유한 item 수·`item_id` 목록(많으면 요약), 락 파일 경로 템플릿(`skill_md2wu/queue/locks/<item_id>.lock`), `session_id`, 점유 시각, `reserved_for_other_session`으로 남겨둔 배치 수. 이 알림 이후에 Phase C(S3-7) 실행을 시작한다.
 
 #### B-5. 산출물
 `batch_plan.json`에 기록:
@@ -307,9 +307,9 @@ Phase B 진입 전에 Stage 1의 메타데이터로 **모든 item에 provisional
 
 ---
 
-## queue-lock §9 통합 선언
+## howto-queue-lock §9 통합 선언
 
-본 스킬은 [queue-lock](../queue-lock/SKILL.md)를 채택한다. 공통 규약(작업 파일 스키마 기본 형태, `cost` 단위 원칙, `<terminal_phase>` 개념, §7 정리 경로 템플릿, 크래시 복구, 패킹 전략 기본)은 [queue-lock §3·§6·§7·§9](../queue-lock/SKILL.md)를 그대로 따르며, 아래 표에는 **md2wu 고유 값**만 선언한다.
+본 스킬은 [howto-queue-lock](../howto-queue-lock/SKILL.md)를 채택한다. 공통 규약(작업 파일 스키마 기본 형태, `cost` 단위 원칙, `<terminal_phase>` 개념, §7 정리 경로 템플릿, 크래시 복구, 패킹 전략 기본)은 [howto-queue-lock §3·§6·§7·§9](../howto-queue-lock/SKILL.md)를 그대로 따르며, 아래 표에는 **md2wu 고유 값**만 선언한다.
 
 | 항목 | 값 |
 |:---|:---|
@@ -349,15 +349,15 @@ skill_md2wu/
 
 ### 락 메커니즘
 
-락 프로토콜 상세(원자 생성·JSON 본문 스키마·atomic replace 갱신·해제·stale·실패 처리)는 [queue-lock §3](../queue-lock/SKILL.md)을 그대로 따른다. md2wu 고유 값은 아래 3항목.
+락 프로토콜 상세(원자 생성·JSON 본문 스키마·atomic replace 갱신·해제·stale·실패 처리)는 [howto-queue-lock §3](../howto-queue-lock/SKILL.md)을 그대로 따른다. md2wu 고유 값은 아래 3항목.
 
 | 항목 | 값 |
 |:---|:---|
 | **락 단위** | `item_id`(=`doc_instance_key`) — **1 MD 파일 = 1 락** |
 | **파일 경로** | `skill_md2wu/queue/locks/<item_id>.lock` (단일 정규 파일) |
-| **`<terminal_phase>`** | `publishing` — queue-lock §1 정의에 따른 종결 직전 단계명. 진입 시 §"전역 발행 정책"의 두 산출물(`wu-*__pre__content.md`, `merge_index.json`)을 전역 경로로 원자 승격한 뒤 락을 `unlink` 한다. |
-| **락 상태 시퀀스** | `pending → working → publishing → (unlink)` 또는 `→ failed`. 모든 전이는 queue-lock §3.2 atomic replace 규약을 따른다. |
-| **큐 상태 전이** | `pending/<item_id>/ → working/<item_id>/ → done/<item_id>/` 또는 `→ failed/<item_id>/`. 모든 이동은 `mv`(POSIX `rename(2)`) 단일 호출로 수행 (queue-lock §4). |
+| **`<terminal_phase>`** | `publishing` — howto-queue-lock §1 정의에 따른 종결 직전 단계명. 진입 시 §"전역 발행 정책"의 두 산출물(`wu-*__pre__content.md`, `merge_index.json`)을 전역 경로로 원자 승격한 뒤 락을 `unlink` 한다. |
+| **락 상태 시퀀스** | `pending → working → publishing → (unlink)` 또는 `→ failed`. 모든 전이는 howto-queue-lock §3.2 atomic replace 규약을 따른다. |
+| **큐 상태 전이** | `pending/<item_id>/ → working/<item_id>/ → done/<item_id>/` 또는 `→ failed/<item_id>/`. 모든 이동은 `mv`(POSIX `rename(2)`) 단일 호출로 수행 (howto-queue-lock §4). |
 
 ### 멀티 세션 분담
 
@@ -520,11 +520,11 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 
 | 도구 | 용도 |
 |:---|:---|
-| `Bash` | `python heading_tokens.py`(S1–2), `python chunk_wu.py`(S5–6), `python manifest.py`(S7), `python coord_series.py`(공통). 큐 디렉토리 전이는 `mv`/`mkdir -p`/`rmdir`. 락은 Python `open(path, "x")` + `os.rename()` (queue-lock §3 규약). |
+| `Bash` | `python heading_tokens.py`(S1–2), `python chunk_wu.py`(S5–6), `python manifest.py`(S7), `python coord_series.py`(공통). 큐 디렉토리 전이는 `mv`/`mkdir -p`/`rmdir`. 락은 Python `open(path, "x")` + `os.rename()` (howto-queue-lock §3 규약). |
 | `Read` | `parts/doc_parts.json`·`scan_index.json`·`batch_plan.json`·`merge_index.json`·기존 `shared/document_classification.md` 로드. |
 | `Write` / `Edit` | 매니페스트(T2), 이슈 게이트 보고(T5), 스테이지 로그(T6), `wu-{wu_key}__pre__content.md`(F1) 생성·갱신. `merge_index.json`(F2)은 atomic rename으로 최후 커밋. |
 | `Grep` | 헤딩 패턴·소스패밀리 단서 검색, 코드 블록 내 `#` 제외 보조. |
-| `Skill` | 큐·락 규약은 [`queue-lock`](../queue-lock/SKILL.md) SSOT 참조(스킬 호출이 아니라 본문 §9 채택 선언). |
+| `Skill` | 큐·락 규약은 [`howto-queue-lock`](../howto-queue-lock/SKILL.md) SSOT 참조(스킬 호출이 아니라 본문 §9 채택 선언). |
 | `Agent` | 파일 수·총 토큰이 컨텍스트 압박을 줄 때만 서브에이전트로 분산(아래 "멀티 에이전트" 항목). 소량은 메인이 스크립트를 직접 호출. |
 
 ### 스크립트 카탈로그
@@ -565,7 +565,7 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 
 | 파라미터 | 기본값 | 용도 |
 |:---|:---|:---|
-| `batch_capacity` | **600K** | 단일 배치의 합산 `cost_tokens` 상한 ([queue-lock §6.1](../queue-lock/SKILL.md)). 사용자/메모리 오버라이드 가능 (예: 200K). |
+| `batch_capacity` | **600K** | 단일 배치의 합산 `cost_tokens` 상한 ([howto-queue-lock §6.1](../howto-queue-lock/SKILL.md)). 사용자/메모리 오버라이드 가능 (예: 200K). |
 | `session_capacity` | `= batch_capacity` | 한 세션이 점유하는 최대 cost. 기본적으로 배치 용량과 동일 → **한 세션 = 1 배치**. |
 | `stale_threshold` | 4h | 락 스테일 판정 mtime 임계. |
 

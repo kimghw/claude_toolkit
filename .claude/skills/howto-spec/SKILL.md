@@ -1,9 +1,9 @@
 ---
-name: specification
+name: howto-spec
 description: 에이전트 1개에게 위임하는 최소 작업 단위(Work Unit) 명세 작성 지침. 에이전트가 단독으로 시작·수행·종료·자가검증할 수 있는 단일 작업의 형식. 단일 목표·입력·출력·수락기준·실패처리만 다루며, 팀 수준 계획(RACI·마일스톤·커뮤니케이션)은 다루지 않는다. TRIGGER when 사용자가 에이전트 작업지시서·작업단위·task brief·subagent 지시문 작성을 요청. DO NOT TRIGGER when 프로젝트 일정/로드맵/기술 명세 작성.
 ---
 
-# specification — 최소 작업 단위(Work Unit) 명세 작성 지침
+# howto-spec — 최소 작업 단위(Work Unit) 명세 작성 지침
 
 본 스킬은 **에이전트 1개에게 위임 가능한 가장 작은 작업 단위**를 어떻게 명세할지 정의한다. 한 작업 단위는 한 에이전트가 **단독으로 시작 → 수행 → 종료 → 자가검증** 할 수 있어야 한다.
 
