@@ -28,9 +28,9 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 | `item_id` | **락·배치의 최소 단위**. 1 MD 파일 = 1 item. `doc_instance_key`와 동일 값이며, 이미 `{authority}_{doc_type}_` 접두사를 포함한다. | `iacs_ur_z10_3_rev21_en` (`iacs_ur_` = authority+doc_type, `z10_3_rev21_en` = 문서 고유부) | queue-lock `<item_id>` |
 | `doc_instance_key` | item 식별자의 정본. `item_id`와 동일 값 (접두사 포함). | 위와 동일 | 파일 고유 ID |
 | `source_family` | 헤딩 패턴·문서 구조 규칙을 공유하는 분류 단위 (Stage 3에서 확정). | `iacs_ur`, `iacs_ui`, `imo_solas` | 배치 그룹화 1차 키 |
-| `series` | 같은 `source_family` 내부에서 번호 연속성을 갖는 문서 묶음. | `Z10` (Z10.1~Z10.11), `E26`, `S-series` | 배치 그룹화 2차 키 |
+| `series` | 같은 `source_family` 내부에서 번호 연속성을 갖는 문서 묶음. `corpus_scope`의 마지막 요소로 들어가는 정규화 키(소문자, 접두사 없음)이며, 세부 서브번호(`Z10`, `Z11`, `E26` 등)는 `series_order`로 표현한다. | `z` (UR Z 시리즈), `e` (UR E 시리즈), `s` (S-series) | 배치 그룹화 2차 키 |
 | `series_order` | series 내부 문서 정렬용 키 (서브번호·revision 순). | `Z10.1 rev21 < Z10.2 rev18 < Z10.3` | 병합·배치 내부 정렬 |
-| `corpus_scope` | 보고·집계용 상위 범위 키. **락 단위가 아님**. | `iacs_ur_z` (UR 중 Z 시리즈 전체) | manifest·통계 집계 |
+| `corpus_scope` | 보고·집계용 상위 범위 키. **락 단위가 아님**. `{authority}_{doc_type}_{series}` 형식. | `iacs_ur_z` (UR Z 시리즈 전체) | manifest·통계 집계 |
 | `document_key` | revision 제거된 논리 문서 키(필요 시 별도 필드). | `iacs_ur_z10_3` | WU 내부 참조용 |
 
 - `doc_key`라는 약칭은 사용하지 않는다.
@@ -49,8 +49,9 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 | 3 | 프로젝트 정의서 | 선택(사용자 제공) | `shared/project_definitions.md` (`_ko.md`) — 식별자·토큰 기준. 저장소에 존재할 때만 로드한다. |
 | 4 | 명명 규칙 | 선택(사용자 제공) | `shared/naming_convention.md` (`_ko.md`) — 파일명·키 생성 규칙. 저장소에 존재할 때만 로드한다. |
 | 5 | 헤딩 프로파일 | 자동 | `.claude/skills/md2wu/heading_profiles.json` — Source Family별 헤딩 정규화 규칙 |
+| 6 | 토큰 임계값 | 선택(사용자 제공) | `shared/thresholds.yaml` — `chunk_max`·`wu_range`·`batch_capacity` 등 기본값 오버라이드. 저장소에 존재할 때만 로드하며, 없으면 §"토큰 임계값 (기본값)" 표의 본문 기본값을 사용한다. |
 
-> 위 2~4번 파일은 모두 **선택 입력**이다. 저장소에 해당 파일이 없으면 스킬은 그 참조를 **빈 값으로 간주하고 진행**하며, 기존 분류/식별자/명명 규칙이 없을 때는 Stage 3·4에서 사용자에게 직접 입력을 요청하거나 세션 내 메모리로만 결정을 기록한다. 새 파일을 자동 생성하지 않는다.
+> 위 2~4번 및 6번 파일은 모두 **선택 입력**이다. 저장소에 해당 파일이 없으면 스킬은 그 참조를 **빈 값으로 간주하고 진행**하며, 기존 분류/식별자/명명 규칙이 없을 때는 Stage 3·4에서 사용자에게 직접 입력을 요청하거나 세션 내 메모리로만 결정을 기록한다. 새 파일을 자동 생성하지 않는다.
 
 ---
 
@@ -82,7 +83,7 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 2. **Est_Tokens_Exclusive** 계산: 해당 헤딩 자체 콘텐츠만 (하위 헤딩 범위 제외)
 3. **Est_Tokens_Inclusive** 계산: 헤딩 시작~끝 전체 범위
 4. **가산성 검증**: `parent.Exclusive + Σ(children.Inclusive) = parent.Inclusive`
-5. 토크나이저: `tiktoken` (`cl100k_base`) 우선, 불가 시 `char_approx` (`ceil(chars / 4 × 1.1)`)
+5. 토크나이저: `tiktoken` (`cl100k_base`) 우선, 불가 시 `char_approx` (`ceil((chars / 4) * 1.1)`)
 
 **산출물:** `parts/doc_parts.json`의 `items[<item_id>].headings` 항목 (세션 내 모든 item이 단일 파일에 통합 저장).
 
@@ -99,9 +100,9 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 4. 사용자 응답 처리:
    - `승인` → 확정. `shared/document_classification.md` (`_ko.md`) 파일이 **제공된 경우에만 갱신**하고, 없으면 세션 내 메모리(스테이지 로그·매니페스트)에만 기록한 뒤 Stage 4 진행.
    - `수정` → 사용자 피드백 반영 후 재제시
-   - `거부` → 해당 파일 건너뛰기
+   - `거부` → 해당 파일 건너뛰기. 거부된 item은 이번 세션의 `batch_plan.json`과 락/큐 대상에서 제외하고(`pending`/`working` 디렉터리를 생성하지 않음), 세션 로컬 매니페스트의 `work_units[]`에 `status = "rejected"`로 기록한다. 전역 `merge_index.json`에는 반영하지 않는다.
 
-**산출물:** 확정된 Source Family 매핑 + 레퍼런스 갱신 + `heading_profiles.json` 프로파일 추가/갱신 (신규 Source Family 시)
+**산출물:** 확정된 Source Family 매핑 + 레퍼런스 갱신 + `heading_profiles.json` 프로파일 추가/갱신 (신규 Source Family 시 — 저장 경로는 입력 #5와 동일한 `.claude/skills/md2wu/heading_profiles.json`. 세션 중에는 메모리에 보관하고, Stage 7 publishing 완료 후 사용자 승인이 확인된 경우에만 원본 파일에 atomic rename으로 커밋한다.)
 
 ### Stage 4 — Authority · DocType · Heading Level 추출 및 일반화
 
@@ -187,15 +188,17 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 
 #### 기본 동작: 자동 완료
 
-트리거 없으면 산출물을 `results/`에 직접 기록하고 매니페스트 생성.
+트리거 없으면 중간 산출물을 세션 로컬 `out/`에 기록하고 T2 매니페스트를 생성한다. publishing 단계에서만 `wu-*__pre__content.md`와 `merge_index.json`을 전역 경로로 승격한다 (§"전역 발행 정책" 참조).
 
 #### 이슈 트리거 조건
 
 | 유형 | 조건 | 심각도 |
 |:---|:---|:---|
 | `oversize_hard` | WU 토큰 > 1.5× 상한 (48K) | HIGH |
-| `oversize_exception` | WU 토큰 > 상한 (32K), ≤ 1.5× | INFO |
+| `oversize_exception` | WU 토큰 > 상한 (32K), ≤ 1.5× | MED |
 | `undersized` | WU 토큰 < 하한 (16K), split/standalone만 해당 | LOW |
+
+> 기계적 임계값 판정(`threshold_issues`)과 LLM 판정 이력(`judgments`) 모두 `HIGH` / `MED` / `LOW` 단일 enum을 공유한다.
 
 #### LLM 판정 이력 (`judgments`)
 
@@ -224,7 +227,7 @@ description: "마크다운 문서에서 헤딩 트리 추출 → 토큰 측정(I
 
 자동 완료된 WU: `status = processed`
 
-**최종 산출물:** `corpus-{scope}__pre__manifest.json` — `{scope}` = `{authority}_{doc_type}_{series}`. 세션 로컬 중간본은 scope 생략 허용, publishing 시 scope 포함 파일명으로 전역 승격.
+**본 스테이지의 세션 로컬 산출물:** `corpus-{scope}__pre__manifest.json` (T2 매니페스트) — `{scope}` = `{authority}_{doc_type}_{series}`. 세션 로컬 중간본은 scope 생략 허용. **전역으로 승격되지 않는다** (§"전역 발행 정책" 참조 — 전역 승격 대상은 `wu-*__pre__content.md`와 `merge_index.json` 두 종류뿐).
 
 ---
 
@@ -485,7 +488,7 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 | `language` | string | 언어 코드 (예: `en`) |
 | `grammar_version` | string | 헤딩 문법 버전 |
 | `measure_method` | string | `tiktoken` 또는 `char_approx` |
-| `series` | string | 예: `ur_z` |
+| `series` | string | 예: `z` (용어표 정의와 일치하는 정규화 키) |
 | `session_id` | string | 생성 세션 ID |
 | `batch_id` | string | 생성 배치 ID |
 | `generated_at` | string | ISO 8601 타임스탬프 |
@@ -502,10 +505,10 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 | `constituent_docs[]` | array | 구성 문서 전체 객체 (`doc_instance_key`, `document_key`, `start_line`, `end_line`, `est_tokens`, `heading_range`) |
 | `est_tokens_total` | int | WU 전체 토큰 수 |
 | `chunk_keys[]` | array | 포함된 ChunkKey 목록 |
-| `status` | string | `planned` → `processed` / `proceeded` / `revised` / `aborted` |
+| `status` | string | `planned` → `processed` / `proceeded` / `revised` / `aborted` / `rejected` (Stage 3에서 사용자 거부된 item; `rejected`는 큐·전역 `merge_index.json`에 반영하지 않고 세션 로컬 매니페스트에만 기록) |
 | `content_file` | string | 실제 콘텐츠 파일 경로 (`wu-{wu_key}__pre__content.md`) |
 
-> corpus 공통 필드(`authority`, `doc_type`, `language`, `grammar_version`, `measure_method`, `created_at` 등)는 top-level에 한 번만 기록하고 `work_units[]`에서는 반복하지 않는다 (CLAUDE.md "중복된 내용은 지양" + SSOT).
+> corpus 공통 필드(`authority`, `doc_type`, `language`, `grammar_version`, `measure_method`, `generated_at` 등)는 top-level에 한 번만 기록하고 `work_units[]`에서는 반복하지 않는다 (CLAUDE.md "중복된 내용은 지양" + SSOT).
 
 ---
 
