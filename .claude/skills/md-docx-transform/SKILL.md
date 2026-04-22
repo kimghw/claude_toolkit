@@ -21,6 +21,17 @@ Word 템플릿으로 `.md` 파일을 `.docx`로 변환하고, **템플릿의 샘
 
 ---
 
+## 사용 도구
+
+| 도구 | 용도 |
+|:---|:---|
+| `Skill` | 선행 단계로 [`extract-docx-styles`](../extract-docx-styles/SKILL.md) 호출 — 템플릿의 Pandoc 필수 `w:name` 정비. |
+| `Bash` | `python .claude/skills/md-docx-transform/transform.py …` 실행(통합 파이프라인). 내부적으로 `pandoc --reference-doc=` + 샘플 표 평탄화 주입 + 고아 style 리포트를 한 번에 수행. 독립 실행이 필요하면 `clone_table_props.py` 직접 호출. |
+| `Read` | `transform.py` 출력 로그(orphan style·sample index 목록 등) 해석, 변환 결과 점검. |
+| (외부 CLI) | `pandoc` (필수, 사전 설치). Python 3.8+ 표준 라이브러리만 사용. |
+
+---
+
 ## 호출 절차 (중요)
 
 ### Step 0 — `extract-docx-styles` 선행 실행

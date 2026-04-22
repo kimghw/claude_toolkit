@@ -26,6 +26,18 @@ Pandoc 변환 시 `--reference-doc` 옵션으로 Word 템플릿을 사용할 때
 
 ---
 
+## 사용 도구
+
+| 도구 | 용도 |
+|:---|:---|
+| `Bash` | `unzip -o`로 docx 압축 해제(`word/document.xml`·`word/styles.xml` 추출). PowerShell 재패키징 시 `[System.IO.Compression.ZipFile]` 사용. **`sed`·`awk`로 styles.xml 직접 편집 금지**. |
+| `Read` | 추출된 `document.xml`·`styles.xml`을 직접 읽어 스타일 정의·참조 확인. |
+| `Grep` | `w:(pStyle\|rStyle\|tblStyle) w:val="…"` 패턴으로 사용 중 style ID 수집(`output_mode: content` 또는 `count`). `multiline: true`로 `<w:style …>…</w:style>` 블록 추출. |
+| `Edit` / `Write` | 누락된 `Table` 등의 스타일을 `</w:styles>` 직전에 삽입할 때만 사용. style ID rename 같은 의미 없는 수정은 금지. |
+| (외부 CLI) | `pandoc --reference-doc=` (변환 검증용). |
+
+---
+
 ## Pandoc이 찾는 `w:name` 목록
 
 ### 문단/텍스트 스타일

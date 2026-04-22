@@ -513,6 +513,17 @@ abort 시 `skill_md2wu/aborted/{doc_instance_key}/`로 격리.
 
 본 스킬은 **결정적·기계적 연산을 Python 스크립트가 수행**하고, **에이전트(LLM)는 스크립트 호출·결과 해석·예외 판단**을 담당한다. 에이전트가 파싱·토큰 카운트·패킹 계산을 직접 수행하지 않는다.
 
+### 사용 도구 (요약)
+
+| 도구 | 용도 |
+|:---|:---|
+| `Bash` | `python heading_tokens.py`(S1–2), `python chunk_wu.py`(S5–6), `python manifest.py`(S7), `python coord_series.py`(공통). 큐 디렉토리 전이는 `mv`/`mkdir -p`/`rmdir`. 락은 Python `open(path, "x")` + `os.rename()` (queue-lock §3 규약). |
+| `Read` | `parts/doc_parts.json`·`scan_index.json`·`batch_plan.json`·`merge_index.json`·기존 `shared/document_classification.md` 로드. |
+| `Write` / `Edit` | 매니페스트(T2), 이슈 게이트 보고(T5), 스테이지 로그(T6), `wu-{wu_key}__pre__content.md`(F1) 생성·갱신. `merge_index.json`(F2)은 atomic rename으로 최후 커밋. |
+| `Grep` | 헤딩 패턴·소스패밀리 단서 검색, 코드 블록 내 `#` 제외 보조. |
+| `Skill` | 큐·락 규약은 [`queue-lock`](../queue-lock/SKILL.md) SSOT 참조(스킬 호출이 아니라 본문 §9 채택 선언). |
+| `Agent` | 파일 수·총 토큰이 컨텍스트 압박을 줄 때만 서브에이전트로 분산(아래 "멀티 에이전트" 항목). 소량은 메인이 스크립트를 직접 호출. |
+
 ### 스크립트 카탈로그
 
 | 스크립트 | 담당 단계 | 연산 내용 |

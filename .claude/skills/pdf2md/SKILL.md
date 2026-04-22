@@ -16,6 +16,30 @@ description: PDF를 구조화된 마크다운으로 변환. 원문 텍스트 무
 
 오케스트레이터의 핵심 원칙·절차·DO/DON'T·체크리스트는 3절에, 서브에이전트의 정적 지시문은 `.claude/agents/pdf2md-worker.md`에 각각 정의되어 있다.
 
+## 사용 도구
+
+본 스킬은 오케스트레이터(메인 세션)와 서브에이전트(`pdf2md-worker`)가 도구를 분담한다.
+
+### 오케스트레이터
+
+| 도구 | 용도 |
+|:---|:---|
+| `Agent` | `subagent_type: "pdf2md-worker"` + `run_in_background: true`로 라운드당 최대 40개 서브에이전트를 단일 메시지에서 병렬 기동. 정적 지시문은 `.claude/agents/pdf2md-worker.md`가 자동 주입. |
+| `Bash` | `pdfinfo`(페이지 수 조회), `qpdf --pages` 또는 `pdfseparate+pdfunite`(파트 추출), `mv`/`mkdir -p`/`rm`(큐 디렉토리 전이·정리, **`rm -rf` 락 금지**), `markdownlint`(병합 후 검증), `python3 -m language_tool_python` 또는 `scripts/filter_typo_report.py`(오탈자 검증·필터링), `sed -i`(이미지 링크 재작성). |
+| `Read` / `Write` / `Edit` | 락 JSON·`task.json`·`scan_index.json`·`partNN.md` 입출력, `markdownlint_rules.md` 갱신, 병합 결과 자가 수정. |
+| `Grep` | 헤딩 순서·이미지 링크 일치 검증 시 패턴 매칭. |
+| (외부 CLI) | `qpdf`, `pdfinfo`, `pdfseparate`/`pdfunite`, `pdfimages`(서브에이전트 책임), `markdownlint`, Python `language_tool_python`. |
+
+### 서브에이전트(`pdf2md-worker`)
+
+| 도구 | 용도 |
+|:---|:---|
+| `Read` | `part_source` PDF 직독(텍스트 사전 추출 금지). |
+| `Bash` | `pdfimages -all`로 담당 파트 이미지 추출. |
+| `Write` / `Edit` | `partNN.md` 생성, 이미지 링크 삽입. |
+
+> 서브에이전트의 도구·절차 상세는 [.claude/agents/pdf2md-worker.md](../../agents/pdf2md-worker.md) 시스템 프롬프트가 SSOT이며, 본 표는 외부에서 본 사용 도구 요약이다.
+
 ## 1. 용어
 
 - **오케스트레이터(Orchestrator)**: 본 스킬을 실행하는 주체이자 사용자의 협력자. 사용자의 요청을 받아 큐 구성, 서브에이전트 호출·조율, 병합, 이미지 집계·링크 재작성, 검증, 정리, 보고를 담당한다.
