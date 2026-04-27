@@ -1,5 +1,5 @@
 ---
-description: "Windows/복사 방식: claude_toolkit 원본(.project_id ID)을 grep으로 탐지한 뒤 .claude/를 복사 동기화. pull=원본→로컬(교집합), push=로컬→원본+git push"
+description: "Windows/복사 방식: claude_toolkit 원본(.project_id ID)을 grep으로 탐지한 뒤 .claude/를 복사 동기화. pull=원본→로컬(교집합), push=로컬→원본+git push, push <filepath>=특정 파일만 복붙+커밋+푸시"
 allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 ---
 
@@ -134,7 +134,13 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
   4. 실행: 각 대상에 대해 `cp -f "$TOOLKIT/.claude/<rel>" "$CLAUDE_PROJECT_DIR/.claude/<rel>"`.
 - 결과 보고: `갱신 N · 동일 M · 원본-only 스킵 K · 로컬-only 보존 L`.
 
-### 2. `push` [`--allow-dirty-origin`] — 로컬 → 원본 + `git push`
+### 2. `push [<filepath>...] [--allow-dirty-origin]` — 로컬 → 원본 + `git push`
+
+두 가지 모드:
+- **전체 push** (`<filepath>` 인자 없음): `.claude/` 하위 전체 동기화.
+- **부분 push** (`<filepath>` 인자 1개 이상): 지정한 파일만 복붙 + commit + push.
+
+#### 2a. 전체 push (인자 없음)
 
 - 로컬 `.claude/` 하위 전체를 원본 `$TOOLKIT/.claude/` 하위로 복사. 기존 파일은 **덮어쓰기**.
 - 원본에만 있던 파일(로컬에 없는 파일)은 **삭제하지 않음** (안전 기본값).
@@ -156,6 +162,47 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
      - `git -C "$TOOLKIT" push` (upstream 없으면 `-u origin <branch>`)
 - 결과 보고: 복사 파일 수, 커밋 해시, push 결과.
 
+#### 2b. 부분 push (`<filepath>` 인자 사용)
+
+지정한 파일만 원본의 동일 상대 경로로 복붙한 뒤 그 파일들에 한해 commit + push 한다. **다른 파일의 dirty 는 무시**되므로 원본 작업 도중에도 안전하게 단일 파일을 밀어 올릴 수 있다.
+
+##### 인자 형식
+
+`<filepath>` 는 다음 중 어느 형태든 허용. 모두 `.claude/` 하위 **상대 경로**로 정규화한다:
+
+| 입력 형태 | 예시 |
+|---|---|
+| 절대 경로 (Windows / POSIX) | `c:\vscode\hwpx-docx\.claude\commands\set_subAgents.md`<br>`/c/vscode/hwpx-docx/.claude/commands/set_subAgents.md` |
+| 프로젝트 루트 기준 상대 경로 | `.claude/commands/set_subAgents.md` |
+| `.claude/` 내부 상대 경로 | `commands/set_subAgents.md` |
+
+##### 검증 (각 인자에 대해, 하나라도 실패하면 전체 중단)
+
+1. 정규화 결과가 `realpath "$CLAUDE_PROJECT_DIR/.claude/"` **하위**에 있어야 함. 트리 밖 경로 거부.
+2. 로컬에 실제 파일로 존재 (`-f`).
+3. 제외 목록(`settings.local.json`, `.project_id`, `.git/*`, `*.swp`, `*.tmp`)에 해당하면 거부.
+4. 심볼릭 링크면 거부 (사전 조건 위반).
+
+##### 절차
+
+1. **원본 dirty 사전 검사 (좁힌 범위)**:
+   ```
+   git -C "$TOOLKIT" status --porcelain -- .claude/<rel1> .claude/<rel2> ...
+   ```
+   - clean → 정상 진행.
+   - 지정 파일에 한해 dirty → 전체 push 와 동일한 정책: 기본 중단, `--allow-dirty-origin` 명시 시에만 진행.
+   - 지정 외 파일의 dirty 는 **무시**(부분 push 의 핵심 가치).
+2. 사전 계획: 복사 대상 파일 목록과 각 항목의 `cp` 전후 `diff --stat` 또는 `diff -u` 샘플 표시 후 사용자 승인 대기.
+3. 실행: 각 인자에 대해 `mkdir -p "$(dirname "$TOOLKIT/.claude/<rel>")"` + `cp -f "$CLAUDE_PROJECT_DIR/.claude/<rel>" "$TOOLKIT/.claude/<rel>"`.
+4. `git -C "$TOOLKIT" add -- .claude/<rel1> .claude/<rel2> ...` (해당 파일만 스테이징, `add -A` 금지).
+5. `git -C "$TOOLKIT" diff --cached --stat -- .claude/<rel1> ...` 표시.
+6. 변경 없음 → `"푸시할 변경 없음 (지정 파일이 원본과 동일)"` 출력 후 종료.
+7. 변경 있음 →
+   - diff 기반 **한국어 1줄** 커밋 메시지 자동 생성. 부분 push 는 지정 파일명을 그대로 노출 (예: `commands/set_subAgents.md 갱신` 또는 다중 시 `commands/set_subAgents.md, skills/foo/SKILL.md 갱신`).
+   - `git -C "$TOOLKIT" commit -m "<msg>"`
+   - `git -C "$TOOLKIT" push` (upstream 없으면 `-u origin <branch>`)
+- 결과 보고: 처리 파일 수, 커밋 해시, push 결과.
+
 ### 3. `diff` — 미리보기 (변경 없음)
 
 - pull/push 실행 시 보게 될 계획 테이블만 조회.
@@ -167,6 +214,7 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 ### 4. 인자 없음 또는 기타
 
 - 인자 없음 → **`diff`와 동일하게 동작** (변경 미리보기만, 실제 파일 변경·`git commit`·`push` 없음). 파괴적 동작(`pull`/`push`)은 사용자가 반드시 **명시적으로 입력**해야만 수행된다.
+- 첫 번째 인자가 `pull` / `push` / `diff` 가 아닌 미상의 토큰이면 → `pull` / `push` 의 부속 인자(filepath 등)인지 모호하므로 사용법 요약 출력 후 종료. 부분 push 는 반드시 첫 토큰을 `push` 로 시작해야 인식된다 (예: `push commands/foo.md`).
 - 알 수 없는 인자 → 사용법 요약 출력 후 종료.
 
 > ⚠ **안전 기본값**: 인자 없이 `/toolkit_merge_win` 을 호출하면 `diff` 와 동일하게 변경 미리보기만 표시한다. 원본 레포를 덮어쓰는 `push` 는 **반드시 명시적으로** `/toolkit_merge_win push` 로 호출해야 수행된다. `pull` 도 마찬가지.
@@ -175,6 +223,10 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 
 - `/toolkit_merge_win` → `diff`와 동일 (변경 미리보기만, 실제 파일 변경·`git commit`·`push` 없음).
 - `/toolkit_merge_win pull` → 원본의 최신 버전으로 로컬의 기존 파일만 갱신 (신규 파일 추가 없음). 원본 dirty 면 경고 후 사용자 확인.
-- `/toolkit_merge_win push` → 로컬 수정분을 원본에 복사 후 `git commit + push`. **원본 dirty 면 기본 중단**.
+- `/toolkit_merge_win push` → 로컬 수정분을 **전체** 원본에 복사 후 `git commit + push`. **원본 dirty 면 기본 중단**.
 - `/toolkit_merge_win push --allow-dirty-origin` → 원본 dirty 에도 불구하고 강제 진행(혼합 커밋이 생성될 수 있음).
+- `/toolkit_merge_win push commands/set_subAgents.md` → **그 파일만** 원본에 복붙 + 단일 파일 commit + push.
+- `/toolkit_merge_win push .claude/commands/set_subAgents.md` → 위와 동일 (프로젝트 루트 기준 경로도 허용).
+- `/toolkit_merge_win push c:\vscode\hwpx-docx\.claude\commands\set_subAgents.md` → 위와 동일 (절대 경로도 허용).
+- `/toolkit_merge_win push commands/set_subAgents.md skills/foo/SKILL.md` → 두 파일만 묶어서 단일 커밋으로 push.
 - `/toolkit_merge_win diff` → 변경 미리보기만, 실제 변경은 수행하지 않음.
