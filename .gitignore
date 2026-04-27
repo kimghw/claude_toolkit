@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 web_service/.server.log
 web_service/.server.pid
+.claude/settings.local.json
