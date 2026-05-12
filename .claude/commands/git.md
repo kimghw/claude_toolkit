@@ -9,6 +9,8 @@ allowed-tools: Bash, Read, Grep, Glob
 
 ## 동작 규칙
 
+0. **인자가 `help` / `-h` / `--help`인 경우**: 본 명령이 받는 인자 목록과 각 인자의 동작 설명을 한눈에 출력하고 종료 (실제 git 작업 수행 안 함).
+
 1. **인자가 비어 있거나 없는 경우** (기본 동작):
    - `git add -A`로 모든 변경사항 스테이지
    - `git diff --cached --stat`으로 스테이지된 내용 확인

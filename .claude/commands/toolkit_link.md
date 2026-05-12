@@ -35,6 +35,7 @@ allowed-tools: Bash, Read, Glob, AskUserQuestion
    - 소비자 프로젝트의 `.claude/`는 일반적으로 소비자 `.gitignore`에 등록되어 소비자 레포에 커밋되지 않음을 전제로 함. (toolkit 원본 레포에서는 `.claude/`가 트래킹 대상.)
 
 2. **인자 해석**
+   - **`help` / `-h` / `--help`**: 본 명령이 받는 인자(인자 없음/`all`/구체 경로/`unlink ...`/`status` 등)와 각 동작 설명을 요약 출력하고 종료 (파일시스템 변경 없음).
    - **인자 없음**: **인터랙티브 선택 모드** (아래 2-1 참조) — `agents/`, `commands/`, `skills/` 하위 항목을 카테고리별로 나열하고 `AskUserQuestion`으로 선택받는다.
    - **`all`**: 최상위 3개(`agents`, `commands`, `skills`)를 `.claude/`에 디렉토리 단위로 **pull-link**.
    - **구체 경로**(예: `references`, `skills/pdf2md`, `commands/git.md`): 위 상태표에 따라 **모드 자동 판별**.

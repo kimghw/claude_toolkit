@@ -28,6 +28,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 | 인자 | 범위 |
 |------|------|
+| `help` / `-h` / `--help` | 본 표(인자 목록과 각 범위 설명)만 출력하고 종료. pull/검사 수행 안 함. |
 | `commands` | `commands/` 만 |
 | `skill` 또는 `skills` | `skills/` 만 |
 | `agents` | `agents/` 만 |

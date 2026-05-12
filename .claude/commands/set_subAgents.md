@@ -1,6 +1,6 @@
 ---
-description: "Codex/Gemini 서브에이전트 설정. 기본은 CLI 설치·인증, 'mcp' 인자 시 MCP 서버 등록, 'update' 인자 시 최신 모델로 재설정."
-allowed-tools: Bash, Read, Edit, Write
+description: "Codex/Gemini 서브에이전트 설정. 기본은 CLI 설치·인증, 'mcp' 인자 시 MCP 서버 등록, 'update' 인자 시 등록된 엔진에 대해 웹검색으로 최신 모델 후보를 조사하고 사용자 선택을 받아 재설정."
+allowed-tools: Bash, Read, Edit, Write, WebSearch, WebFetch
 ---
 
 # /set_subAgents 명령 — 서브에이전트(Codex/Gemini) 설정
@@ -11,13 +11,16 @@ allowed-tools: Bash, Read, Edit, Write
 
 | 인자 | 동작 |
 |------|------|
+| `help` / `-h` / `--help` | 본 표(인자 목록과 각 동작 설명)만 출력하고 종료. 실제 설치/등록/갱신 수행 안 함. |
 | (없음) | **기본**: Codex/Gemini CLI 설치 + 인증 (Node.js 20+ 사전 점검 포함). 아래 "CLI 설치 (기본 동작)" 섹션. |
 | `mcp` | Claude Code MCP 서버로 Codex/Gemini 등록만 수행. **CLI 설치·인증은 이미 완료됐다고 가정**하며, 미설치 시 먼저 `/set_subAgents` 실행을 안내하고 중단. 아래 "MCP 등록 (옵션)" 섹션. |
-| `update` | Codex/Gemini를 아래 "최신 모델 정보" 표의 값으로 재설정. |
+| `update` | **이미 등록된** Codex/Gemini 서브에이전트에 대해 웹검색으로 최신 모델 후보를 조사하고, 사용자 선택을 받아 아래 "최신 모델 정보" 표를 갱신한 뒤 재설정. 미등록 엔진은 스킵. |
 
 ## 최신 모델 정보 (단일 출처)
 
 이 섹션의 값이 **"최신 모델"의 정의**이다. 모델이 새로 출시되면 이 표만 수정하면 `/set_subAgents update`가 자동으로 새 값을 적용한다.
+
+**참고:** `update` 인자로 호출하면 이 표는 **자동으로 갱신될 수 있다**. update 모드는 등록된 엔진에 대해 웹검색으로 최신 모델 후보를 조사 → 사용자 선택을 받아 → 본 표의 해당 행을 Edit으로 덮어쓴 뒤 이후 단계를 진행한다. 자세한 절차는 아래 "update 모드 → 단계 0" 참조.
 
 | 엔진 | 최신 모델 | 프로필 이름 | 보조 설정 |
 |------|-----------|------------|-----------|
@@ -26,7 +29,7 @@ allowed-tools: Bash, Read, Edit, Write
 
 > Codex 는 **프로필 기반** 으로 관리한다. `~/.codex/config.toml` 에 `[profiles.xhigh]` 블록으로 정의하고, CLI/MCP 모두 `--profile xhigh` 플래그로 호출한다. 글로벌 기본값(top-level `model` / `reasoning_effort`)은 사용하지 않는다 — 프로필이 단일 진실의 원천(single source of truth).
 >
-> 값을 갱신할 때는 공식 출처(OpenAI / Google 공지, `codex --help`, `gemini models list` 등)에서 확인 후 위 표를 업데이트하고 본 문서의 다른 예시들도 동일한 값으로 맞춘다.
+> 값을 갱신할 때는 공식 출처(OpenAI / Google 공지, `codex --help`, `gemini models list` 등)에서 확인 후 위 표를 업데이트하고 본 문서의 다른 예시들도 동일한 값으로 맞춘다. `update` 모드를 사용하면 이 확인/갱신 과정을 반자동으로 처리할 수 있다.
 
 ---
 
@@ -200,7 +203,7 @@ Codex / Gemini 가 목록에 등록돼 있는지 확인.
 
 ## update 모드 (`update` 인자)
 
-인자가 `update` 일 때 수행하는 동작. CLI 및/또는 MCP 등록이 이미 돼 있다고 가정하고 **위 표의 프로필**을 `~/.codex/config.toml` 에 영구 등록하고, MCP 서버를 해당 프로필로 고정한다.
+인자가 `update` 일 때 수행하는 동작. CLI 및/또는 MCP 등록이 이미 돼 있다고 가정하고, **이미 등록된 엔진**에 대해 웹검색으로 최신 모델 후보를 조사하고 사용자 선택을 받아 **"최신 모델 정보" 표를 갱신**한 뒤, 그 값으로 `~/.codex/config.toml` 의 프로필과 MCP 서버 등록을 동기화한다. 미등록 엔진은 스킵.
 
 ### 표에서 가져오는 값 (단일 출처)
 
@@ -209,7 +212,55 @@ Codex / Gemini 가 목록에 등록돼 있는지 확인.
 - `EFFORT` ← 표의 **보조 설정** 의 `reasoning_effort` 값 (예: `xhigh`)
 - `GEMINI_MODEL_VAL` ← 표의 Gemini 최신 모델 (예: `gemini-3.1-pro`)
 
+> 단계 0 에서 표가 갱신되면 위 변수들은 **갱신된 값**을 가리키게 된다. 이후 단계는 항상 "최신 모델 정보" 표의 현재 값을 다시 읽어 진행한다.
+
 ### 동작 순서
+
+0. **최신 모델 후보 조사 (웹검색) — `update` 호출 시 가장 먼저 수행**
+
+   0-1. **대상 엔진 결정**
+   - `claude mcp list` 결과를 파싱해 등록된 MCP 서버 식별.
+   - "최신 모델 정보" 표에 정의된 엔진(`codex`, `gemini`) 중 **현재 등록된 것만** 대상.
+   - 등록되지 않은 엔진은 "미설치 — 스킵"으로 보고하고 다음 엔진으로 진행.
+   - 사용자가 인자나 후속 메시지에서 "전체 강제", "codex만" 등 범위를 명시했으면 그에 따른다.
+
+   0-2. **엔진별 웹검색 (`WebSearch`)**
+   - 각 대상 엔진에 대해 다음 쿼리 패턴으로 검색:
+     - **Codex**: `latest OpenAI Codex model <올해> release availability`, `gpt-5 codex model version site:openai.com`
+     - **Gemini**: `latest Gemini model <올해> release`, `gemini latest model site:ai.google.dev OR site:cloud.google.com`
+   - `<올해>` 는 현재 날짜에서 추출 (CLAUDE.md `currentDate` 또는 `date +%Y`).
+   - 공식 출처(OpenAI/Google 블로그, OpenAI Platform 문서, Vertex AI 문서) 우선. 비공식 블로그·뉴스는 보조 검증용.
+   - 검색 결과에서 **GA(generally available)** 상태의 최신 모델 ID를 1차 후보로, **preview/experimental** 은 2차 후보로 분리.
+   - 필요 시 `WebFetch` 로 공식 release notes 페이지를 가져와 정확한 모델 ID/출시일/상태를 확정한다.
+
+   0-3. **후보 비교 + 사용자 선택**
+   - 각 엔진별로 다음 형식으로 요약을 출력:
+
+     ```
+     [Codex]
+     - 현재 표 값:   gpt-5.5
+     - 검색 최신값:  gpt-5.5 (GA, 2026-XX-XX)  → 변경 없음
+     - 추가 후보:    gpt-5.6 (preview, 2026-XX-XX)
+     출처: <URL>, <URL>
+     ```
+
+   - 검색 결과가 현재 표 값과 일치하면 "변경 없음"으로 표시하고 추가 확인 없이 다음 엔진으로 진행.
+   - 다르면 `AskUserQuestion` 으로 선택지 제시:
+     - `(a)` 현재 값 유지 (변경하지 않음)
+     - `(b)` 검색된 GA 최신값으로 갱신
+     - `(c)` 다른 후보(검색 결과의 preview/대안)로 갱신
+     - `(d)` 직접 모델 ID 입력
+   - 사용자가 선택할 때까지 다음 엔진/단계로 가지 않는다.
+
+   0-4. **"최신 모델 정보" 표 자동 갱신**
+   - 사용자가 (b)·(c)·(d) 를 선택해 새 모델 ID 가 결정됐으면 본 문서의 "최신 모델 정보" 표 해당 엔진 행의 **최신 모델** 컬럼을 `Edit` 으로 덮어쓴다.
+   - **프로필 이름** / **보조 설정** 컬럼은 사용자가 명시적으로 변경을 요청한 경우에만 수정. 기본은 그대로 유지.
+   - 동일 모델 ID 가 본 문서 내 다른 위치(예: "참고: 설정 파일 직접 편집" 의 JSON/TOML 예시, "Codex MCP 등록" 섹션의 예시 등) 에도 등장하면 동일 값으로 함께 갱신한다 (`replace_all` 또는 추가 Edit 호출).
+   - 갱신 후 사용자에게 "표를 `<이전값>` → `<새값>` 으로 갱신했습니다" 를 보고하고 단계 1 로 진행.
+
+   0-5. **비대화 모드 / 검색 실패 처리**
+   - 사용자가 `--auto` 등 비대화 옵션을 명시했거나 환경 제약으로 질문이 불가능하면: 검색된 GA 최신값을 자동 선택 (preview 는 자동 채택 금지). 변경 내역은 출력 로그에 명시.
+   - 웹검색이 실패하거나 신뢰할 만한 후보를 찾지 못한 경우: 표 갱신을 스킵하고 **현재 표 값**으로 단계 1 진행. 사용자에게 "웹검색 실패 — 표 값 유지" 안내.
 
 1. **현재 상태 확인**
    - `claude mcp list` 로 등록된 MCP 서버 목록 확인.
