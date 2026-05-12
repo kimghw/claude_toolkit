@@ -41,7 +41,7 @@ argument-hint: [show|all|add|<port>|rm <port>|help]
 
 ## 데이터 파일
 
-`$HOME/claude_toolkit/.claude/references/port_list.md` (프로젝트에서는 `.claude/references/port_list.md` 심볼릭 링크).
+**스킬 폴더 안**에서 관리한다 — `.claude/skills/port_manager/port_list.md` (claude_toolkit 원본: `$HOME/claude_toolkit/.claude/skills/port_manager/port_list.md`). 여러 프로젝트가 같은 toolkit 을 공유하므로 한 파일이 모든 프로젝트의 SSOT 역할을 유지한다. `port_ops.sh` 는 스크립트와 같은 폴더의 `port_list.md` 를 기본 경로로 사용한다 (override 가 필요하면 환경변수 `PORT_LIST` 로).
 
 스키마:
 
@@ -99,7 +99,7 @@ export PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
    - `"$OPS" status "$PORT"` → `RUNNING <pid>` 이면 알리고 `"$OPS" kill "$PORT"`.
    - `"$OPS" start "$PORT" "$CWD" $CMD` (CMD 는 단어 분리 허용, 따옴표 없이).
    - 2~3초 대기 후 `"$OPS" status "$PORT"` 재확인.
-4. 결과 보고 (§출력 형식).
+4. 결과 보고 (§출력 형식). **기동 성공 시 마지막 줄에 클릭 가능한 URL 링크를 포함한다** — `[http://localhost:<PORT>](http://localhost:<PORT>)`.
 
 ### 모드: 조회 (`show`)
 
@@ -195,14 +195,17 @@ options:
   npm run dev  @  web
   기존: RUNNING 42465  →  KILLED
   신규: RUNNING 51812  (log: /tmp/port_manager/TaskPilot-3000.log)
+  👉 [http://localhost:3000](http://localhost:3000)
 ```
+
+마지막 줄 링크는 **기동 후 status 재확인이 `RUNNING` 일 때만** 출력한다. `STOPPED` 면 링크 대신 로그 경로 안내만 남긴다.
 
 ### 조회 모드
 
 ```
 [port_manager] TaskPilot — 등록된 서버·포트 N개
-  3000  Web UI   npm run dev  @  web
-  8000  API      uvicorn app:app --reload  @  server
+  3000  Web UI   npm run dev  @  web          → [http://localhost:3000](http://localhost:3000)
+  8000  API      uvicorn app:app --reload  @  server   → [http://localhost:8000](http://localhost:8000)
 ```
 
 비고가 `—` 면 ` @ —` 생략. 0행이면 `[port_manager] TaskPilot — 등록된 서버가 없습니다.`

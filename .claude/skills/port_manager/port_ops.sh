@@ -14,13 +14,14 @@
 #   port_ops.sh restart <port> <cwd> <cmd...>        # kill + start
 #
 # 환경변수:
-#   PORT_LIST   port_list.md 경로 (기본: $HOME/claude_toolkit/.claude/references/port_list.md)
+#   PORT_LIST   port_list.md 경로 (기본: 스크립트와 같은 폴더의 port_list.md)
 #   PROJECT_ROOT  start 시 cwd 기준 루트 (기본: $PWD)
 #   LOG_DIR     백그라운드 로그 디렉토리 (기본: /tmp/port_manager)
 
 set -euo pipefail
 
-PORT_LIST="${PORT_LIST:-$HOME/claude_toolkit/.claude/references/port_list.md}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PORT_LIST="${PORT_LIST:-$SCRIPT_DIR/port_list.md}"
 PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
 LOG_DIR="${LOG_DIR:-/tmp/port_manager}"
 mkdir -p "$LOG_DIR"
