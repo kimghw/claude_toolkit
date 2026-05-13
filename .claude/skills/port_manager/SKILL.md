@@ -99,7 +99,7 @@ export PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
    - `"$OPS" status "$PORT"` → `RUNNING <pid>` 이면 알리고 `"$OPS" kill "$PORT"`.
    - `"$OPS" start "$PORT" "$CWD" $CMD` (CMD 는 단어 분리 허용, 따옴표 없이).
    - 2~3초 대기 후 `"$OPS" status "$PORT"` 재확인.
-4. 결과 보고 (§출력 형식). **기동 성공 시 마지막 줄에 클릭 가능한 URL 링크를 포함한다** — `[http://localhost:<PORT>](http://localhost:<PORT>)`.
+4. 결과 보고 (§출력 형식). **기동 성공 시 클릭 가능한 URL 링크를 별도 줄에 출력한다** — 반드시 코드블록(``` ```) 바깥에 마크다운 하이퍼링크 형식 `👉 [http://localhost:<PORT>](http://localhost:<PORT>)` 로. 코드블록 내부에 두면 클릭이 안 되므로 금지.
 
 ### 모드: 조회 (`show`)
 
@@ -190,25 +190,33 @@ options:
 
 ### 재시작 모드 — 1행 자동 선택
 
+상태/로그 블록은 코드펜스 안, URL 하이퍼링크는 **반드시 코드펜스 바깥**에 별도 줄로 출력한다 (그래야 클릭 가능).
+
 ```
 [port_manager] TaskPilot · Web UI :3000 (자동 선택, 등록 행 1개)
   npm run dev  @  web
   기존: RUNNING 42465  →  KILLED
   신규: RUNNING 51812  (log: /tmp/port_manager/TaskPilot-3000.log)
-  👉 [http://localhost:3000](http://localhost:3000)
 ```
 
-마지막 줄 링크는 **기동 후 status 재확인이 `RUNNING` 일 때만** 출력한다. `STOPPED` 면 링크 대신 로그 경로 안내만 남긴다.
+👉 [http://localhost:3000](http://localhost:3000)
+
+URL 줄은 **기동 후 status 재확인이 `RUNNING` 일 때만** 출력한다. `STOPPED` 면 URL 줄을 생략하고 로그 경로 안내만 남긴다.
 
 ### 조회 모드
 
+표 본문은 코드펜스 안에, **클릭 가능한 URL 목록은 코드펜스 바깥에 별도 섹션**으로 출력한다.
+
 ```
 [port_manager] TaskPilot — 등록된 서버·포트 N개
-  3000  Web UI   npm run dev  @  web          → [http://localhost:3000](http://localhost:3000)
-  8000  API      uvicorn app:app --reload  @  server   → [http://localhost:8000](http://localhost:8000)
+  3000  Web UI   npm run dev  @  web
+  8000  API      uvicorn app:app --reload  @  server
 ```
 
-비고가 `—` 면 ` @ —` 생략. 0행이면 `[port_manager] TaskPilot — 등록된 서버가 없습니다.`
+- 👉 [http://localhost:3000](http://localhost:3000) — Web UI
+- 👉 [http://localhost:8000](http://localhost:8000) — API
+
+비고가 `—` 면 ` @ —` 생략. 0행이면 `[port_manager] TaskPilot — 등록된 서버가 없습니다.` (URL 섹션 생략)
 
 ### 등록·갱신 모드
 
@@ -233,6 +241,7 @@ options:
 - 시작 직후 status 재확인으로 기동 검증.
 - 등록 시 다른 프로젝트가 같은 포트를 쓰면 충돌 경고를 띄우고 사용자에게 확인.
 - 로그 경로를 결과에 포함해 디버깅 단서를 남긴다.
+- **URL은 코드블록 바깥에 마크다운 하이퍼링크로 출력한다** — `👉 [http://localhost:<PORT>](http://localhost:<PORT>)`. 코드펜스 안에 두면 클릭이 안 된다.
 
 ## DON'T
 
