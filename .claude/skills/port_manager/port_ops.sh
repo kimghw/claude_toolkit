@@ -12,6 +12,7 @@
 #   port_ops.sh kill <port>                          # 포트의 LISTEN 프로세스 종료. "KILLED <pid>" 또는 "NOT_RUNNING"
 #   port_ops.sh start <port> <cwd> <cmd...>          # cwd로 cd 후 cmd를 백그라운드 실행, 로그파일 경로 출력
 #   port_ops.sh restart <port> <cwd> <cmd...>        # kill + start
+#   port_ops.sh discover [project_root]              # 현재 프로젝트에 속한 LISTEN 서버 자동발견. TSV: 포트\tPID\t시작명령\t작업디렉토리
 #
 # 환경변수:
 #   PORT_LIST   port_list.md 경로 (기본: 스크립트와 같은 폴더의 port_list.md)
@@ -219,6 +220,76 @@ cmd_restart() {
   cmd_start "$port" "$cwd_rel" "${cmd[@]}"
 }
 
+# 주어진 pid가 project_root 안의 프로세스인지(또는 그 부모가) 검사.
+# 매치 시 stdout 에 "<cwd>\t<cmdline>" 을 출력하고 0, 아니면 1.
+# 최대 4 hop 까지 부모로 올라가며 (npm run dev → next-server 같은 자식 spawn 처리).
+proc_belongs_to_project() {
+  local pid="$1" root="$2"
+  local hops=0 max_hops=4
+  local cwd cmd ppid
+  while [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null && [ "$hops" -lt "$max_hops" ] && [ -d "/proc/$pid" ]; do
+    cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | sed 's/[[:space:]]*$//' || true)"
+    if [ -n "$cwd" ] && { [ "$cwd" = "$root" ] || [ "${cwd#$root/}" != "$cwd" ]; }; then
+      printf '%s\t%s\n' "$cwd" "$cmd"
+      return 0
+    fi
+    case "$cmd" in
+      *"$root"*) printf '%s\t%s\n' "${cwd:-$root}" "$cmd"; return 0 ;;
+    esac
+    ppid="$(awk '/^PPid:/ {print $2; exit}' "/proc/$pid/status" 2>/dev/null || true)"
+    [ -z "$ppid" ] && return 1
+    [ "$ppid" = "$pid" ] && return 1
+    pid="$ppid"
+    hops=$((hops+1))
+  done
+  return 1
+}
+
+cmd_discover() {
+  local root="${1:-$PROJECT_ROOT}"
+  [ -n "$root" ] || die "discover: project_root required (or set PROJECT_ROOT)"
+  if [ -d "$root" ]; then
+    root="$(cd "$root" && pwd -P)"
+  fi
+  command -v ss >/dev/null 2>&1 || die "ss not available (install iproute2)"
+
+  # ss -tlnpH: state recv send local_addr peer_addr "users:((..,pid=PID,fd=..))"
+  # 한 줄씩 처리. pipe-while 안에서 stdout 만 사용해 누적.
+  local seen=""
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    local laddr port pids pid match_out cwd cmd cwd_rel
+    laddr="$(awk '{print $4}' <<<"$line")"
+    port="${laddr##*:}"
+    case "$port" in ''|*[!0-9]*) continue ;; esac
+
+    # 한 LISTEN 소켓에 pid 가 여러 개 나올 수 있음 (worker fork). 모두 검사.
+    pids="$(grep -oE 'pid=[0-9]+' <<<"$line" 2>/dev/null | awk -F= '{print $2}' | sort -u || true)"
+    [ -z "$pids" ] && continue
+
+    for pid in $pids; do
+      # 이미 보고한 (port,pid) 조합이면 skip
+      case " $seen " in *" ${port}:${pid} "*) continue ;; esac
+      if match_out="$(proc_belongs_to_project "$pid" "$root")"; then
+        cwd="${match_out%%	*}"
+        cmd="${match_out#*	}"
+        if [ "$cwd" = "$root" ]; then
+          cwd_rel="—"
+        elif [ "${cwd#$root/}" != "$cwd" ]; then
+          cwd_rel="${cwd#$root/}"
+        else
+          cwd_rel="$cwd"
+        fi
+        printf '%s\t%s\t%s\t%s\n' "$port" "$pid" "$cmd" "$cwd_rel"
+        seen="$seen ${port}:${pid}"
+        break
+      fi
+    done
+  done < <(ss -tlnpH 2>/dev/null)
+  return 0
+}
+
 main() {
   local sub="${1:-}"; shift || true
   case "$sub" in
@@ -232,6 +303,7 @@ main() {
     kill)     [ $# -ge 1 ] || die "usage: kill <port>";        cmd_kill "$1" ;;
     start)    [ $# -ge 3 ] || die "usage: start <port> <cwd> <cmd...>";   cmd_start "$@" ;;
     restart)  [ $# -ge 3 ] || die "usage: restart <port> <cwd> <cmd...>"; cmd_restart "$@" ;;
+    discover) cmd_discover "${1:-}" ;;
     ""|help|-h|--help)
       awk 'NR==1 {next} /^#/ || /^[[:space:]]*$/ {print; next} {exit}' "$0"
       ;;

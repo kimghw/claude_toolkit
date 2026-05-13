@@ -2,7 +2,7 @@
 name: port_manager
 description: 현재 프로젝트의 서버·포트를 SSOT(port_list.md)에서 조회·등록·갱신·삭제하고, 등록된 서버를 상태확인→종료→재시작까지 처리. 행이 0이면 등록 안내, 1이면 자동 재시작, 2+이면 AskUserQuestion으로 선택받아 재시작. 포트 검색·종료·기동·표 편집은 port_ops.sh 스크립트로 위임. TRIGGER when 사용자가 /port_manager 호출, 현재 프로젝트 포트·서버 등록·조회·재시작·재기동 요청. DO NOT TRIGGER when 외부 호스트 접속, 배포·CI 파이프라인.
 allowed-tools: Bash AskUserQuestion Read
-argument-hint: [show|all|add|<port>|rm <port>|help]
+argument-hint: [show|all|update|add|<port>|rm <port>|help]
 ---
 
 # port_manager — 프로젝트 서버 등록·조회·재시작
@@ -26,6 +26,7 @@ argument-hint: [show|all|add|<port>|rm <port>|help]
 | (없음) | **재시작** | 현재 프로젝트 행을 보여주고 1행이면 자동 재시작, 2+행이면 `AskUserQuestion` 선택 후 재시작. 0행이면 등록 안내. |
 | `show` | **조회** | 현재 프로젝트 행을 출력만. 재시작 안 함. 0행이면 미등록 메시지. |
 | `all` 또는 `list` | **전체 조회** | `port_list.md` 전체 표를 그대로 출력. 다른 프로젝트 포함. |
+| `update` | **자동 발견 등록** | 현재 프로젝트에 속한 LISTEN 서버를 `discover` 로 찾아 보여주고, `AskUserQuestion` multiSelect 로 등록 대상을 고르게 한다. 다른 프로젝트와 같은 포트면 충돌 경고. |
 | `<숫자>` | **등록/갱신** | 그 포트로 등록(미존재) 또는 갱신(존재). 서비스·시작명령·작업디렉토리는 `AskUserQuestion`. |
 | `add` | **등록(대화형)** | 포트부터 `AskUserQuestion` 으로 받고 동일 절차. |
 | `rm <port>` 또는 `remove <port>` | **삭제** | 현재 프로젝트의 그 행을 삭제. 사용자 확인 후. |
@@ -73,6 +74,9 @@ port_ops.sh status  <port>                          # "RUNNING <pid>" | "STOPPED
 port_ops.sh kill    <port>                          # "KILLED <pid>" | "NOT_RUNNING" | "KILL_FAILED <pid>"
 port_ops.sh start   <port> <cwd> <cmd...>           # "STARTED pid=<pid> log=<path>"
 port_ops.sh restart <port> <cwd> <cmd...>           # kill + start
+
+# 자동 발견
+port_ops.sh discover [project_root]                 # TSV: 포트\tPID\t시작명령\t작업디렉토리 (PROJECT_ROOT 안에 속한 LISTEN 만)
 ```
 
 호출 시 항상 `PROJECT_ROOT="$CLAUDE_PROJECT_DIR"` 를 export 한다 (cwd 해석 기준).
@@ -109,6 +113,24 @@ export PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
 ### 모드: 전체 조회 (`all` / `list`)
 
 1. `"$OPS" list_all` 결과를 그대로 코드블록으로 출력.
+
+### 모드: 자동 발견 등록 (`update`)
+
+현재 프로젝트에서 이미 떠 있는 서버를 스캔해 SSOT 에 일괄 등록·갱신한다. **포트 충돌(다른 프로젝트가 같은 포트 사용)을 보여주는 것**이 핵심.
+
+1. `"$OPS" discover "$CLAUDE_PROJECT_DIR"` 로 후보 수집 (TSV: 포트·PID·시작명령·작업디렉토리).
+2. 0행이면 `[port_manager] <PROJECT> — 실행 중인 서버를 찾지 못했습니다. 서버를 먼저 띄운 뒤 다시 실행하거나 /port_manager add 로 수동 등록하세요.` 출력 후 종료.
+3. 각 후보에 대해 분류:
+   - `"$OPS" has "$PROJECT" "$PORT"` → YES면 **등록됨** (갱신 후보), NO면 신규.
+   - 신규 중 같은 포트가 다른 프로젝트 행에 있으면 **충돌** 라벨. (`grep` 으로 `port_list.md` 의 해당 포트 행을 찾아 프로젝트명 비교)
+4. 후보 표를 출력 형식대로 보여준다 (라벨: `[신규]`, `[등록됨]`, `[충돌: <다른프로젝트>]`).
+5. `AskUserQuestion` (**multiSelect: true**) 로 등록·갱신할 항목을 고르게 한다 (§AskUserQuestion 규약).
+6. 선택된 각 항목에 대해 서비스 이름을 묻는다 (`AskUserQuestion`; 한 번에 묶어서). 시작명령·작업디렉토리는 detect 값을 기본으로 쓰되, 사용자가 Other 로 수정 가능. `next-server` 처럼 자식 프로세스만 잡힌 경우 사용자가 `npm run dev` 등 상위 명령으로 바꿀 수 있도록 안내한다.
+7. 실행:
+   - 신규: `"$OPS" add  "$PROJECT" "$PORT" "<svc>" "<cmd>" "<cwd>"`
+   - 등록됨(갱신): `"$OPS" update "$PROJECT" "$PORT" "<svc>" "<cmd>" "<cwd>"`
+   - 충돌: 사용자가 **그대로 진행 선택 시**에만 add. (충돌 그 자체로는 차단하지 않지만, 같은 포트를 두 프로젝트가 동시에 쓸 수 없다는 점을 경고로 명시한다.)
+8. 결과 행들을 출력 형식으로 정리해 보여준다.
 
 ### 모드: 등록·갱신 (`<숫자>` 또는 `add`)
 
@@ -151,6 +173,21 @@ options:
 
 - 옵션 description 에는 **현재 상태**(status 결과)를 미리 조회해 포함.
 - 행이 4개를 초과하면 처음 3개만 보이고 4번째 옵션은 "그 외 N개는 직접 입력"; 사용자가 Other 로 응답.
+
+### 자동 발견 모드 — 등록 대상 선택 (multiSelect)
+
+```yaml
+question: "<PROJECT> 에서 실행 중인 서버 N개를 찾았습니다. SSOT 에 등록·갱신할 항목을 모두 고르세요."
+header: "등록 대상"
+multiSelect: true
+options:
+  - label: "<PORT> · <SERVICE_INFERRED>"
+    description: "[신규|등록됨|충돌:<other-proj>]  <CMD>  @  <CWD>   pid=<PID>"
+```
+
+- 옵션 label 의 `SERVICE_INFERRED` 는 cmdline 의 첫 토큰이나 알기 쉬운 키워드(예: `next-server` → "Web UI"). 추론이 어렵으면 `port:<PORT>` 만.
+- description 에 분류 라벨을 **맨 앞**에 넣어 사용자가 충돌을 한눈에 본다.
+- 후보가 4개 초과면 처음 3개 + Other "직접 입력".
 
 ### 등록 모드 — 필드 수집
 
@@ -227,6 +264,28 @@ URL 줄은 **기동 후 status 재확인이 `RUNNING` 일 때만** 출력한다.
 
 갱신은 `신규 등록` → `행 갱신` 으로 변경.
 
+### 자동 발견 모드 (`update`)
+
+후보 표시 단계 — 라벨을 맨 앞에 둬 충돌을 한눈에 확인:
+
+```
+[port_manager] TaskPilot — 발견된 서버 N개
+  [신규]              3000  next-server      pid=532946  @  web
+  [등록됨]            8000  uvicorn          pid=611002  @  server
+  [충돌: OtherProj]   5173  vite             pid=712345  @  web
+```
+
+처리 결과:
+
+```
+[port_manager] TaskPilot — 자동 발견 등록 결과:
+  + 신규  3000  Web UI   npm run dev  @  web
+  ~ 갱신  8000  API      uvicorn app:app --reload  @  server
+```
+
+- `+` = 신규 add, `~` = 기존 행 update, `=` = 변경 없이 건너뜀.
+- 0건이면 `[port_manager] TaskPilot — 등록한 행이 없습니다.`
+
 ### 삭제 모드
 
 ```
@@ -268,6 +327,8 @@ URL 줄은 **기동 후 status 재확인이 `RUNNING` 일 때만** 출력한다.
 - [ ] 재시작 모드에서 행 수에 따라 분기(0/1/2+) 했다.
 - [ ] 2+ 행에 대해 `AskUserQuestion` 으로 물었다.
 - [ ] 등록 모드에서 다른 프로젝트의 포트 충돌을 검사했다.
+- [ ] `update` 모드에서 `discover` 결과를 분류(신규/등록됨/충돌)해 사용자에게 보여줬다.
+- [ ] `update` 모드 multiSelect 선택 결과만 add/update 했다 (선택 안 한 행은 건드리지 않음).
 - [ ] kill 은 RUNNING 일 때만 호출했다.
 - [ ] start 후 status 재확인을 수행했다.
 - [ ] 결과 보고가 출력 형식을 따른다.
