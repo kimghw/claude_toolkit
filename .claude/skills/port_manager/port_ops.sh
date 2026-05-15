@@ -13,6 +13,7 @@
 #   port_ops.sh start <port> <cwd> <cmd...>          # cwd로 cd 후 cmd를 백그라운드 실행, 로그파일 경로 출력
 #   port_ops.sh restart <port> <cwd> <cmd...>        # kill + start
 #   port_ops.sh discover [project_root]              # 현재 프로젝트에 속한 LISTEN 서버 자동발견. TSV: 포트\tPID\t시작명령\t작업디렉토리
+#   port_ops.sh inspect  [project_root]              # 프로젝트 내부 설정 파일에서 선언된 서버 추출 (실행 여부 무관). TSV: source\t이름\t포트\t시작명령\t작업디렉토리. 미상 필드는 "—"
 #
 # 환경변수:
 #   PORT_LIST   port_list.md 경로 (기본: 스크립트와 같은 폴더의 port_list.md)
@@ -290,6 +291,162 @@ cmd_discover() {
   return 0
 }
 
+# inspect <project_root>
+# 프로젝트 루트 내부의 알려진 설정 파일을 스캔해 "선언된 서버"를 출력한다.
+# 출력 TSV: source\tname\tport\tcommand\tcwd_rel
+# 미상 필드는 "—".
+cmd_inspect() {
+  local root="${1:-$PROJECT_ROOT}"
+  [ -n "$root" ] || die "inspect: project_root required (or set PROJECT_ROOT)"
+  [ -d "$root" ] || die "inspect: directory not found: $root"
+  root="$(cd "$root" && pwd -P)"
+  command -v python3 >/dev/null 2>&1 || die "python3 not available"
+
+  python3 - "$root" <<'PYEOF'
+import json, os, re, sys, urllib.parse
+
+root = sys.argv[1]
+results = []  # (source, name, port, cmd, cwd_rel)
+
+def rel(cwd):
+    if not cwd or cwd == "—":
+        return "—"
+    abs_cwd = os.path.abspath(os.path.join(root, cwd)) if not os.path.isabs(cwd) else cwd
+    if abs_cwd == root:
+        return "—"
+    if abs_cwd.startswith(root + os.sep):
+        return abs_cwd[len(root) + 1:]
+    return cwd  # 외부 경로 그대로
+
+def port_from_url(url):
+    try:
+        p = urllib.parse.urlsplit(url)
+        if p.port:
+            return str(p.port)
+    except Exception:
+        pass
+    m = re.search(r":(\d{2,5})(?:/|$)", url or "")
+    return m.group(1) if m else "—"
+
+def scan_mcp_like(path, source):
+    if not os.path.isfile(path):
+        return
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except Exception:
+        return
+    servers = data.get("servers") or data.get("mcpServers") or {}
+    if not isinstance(servers, dict):
+        return
+    for name, sv in servers.items():
+        if not isinstance(sv, dict):
+            continue
+        port = "—"
+        if sv.get("url"):
+            port = port_from_url(sv["url"])
+        elif sv.get("port"):
+            port = str(sv["port"])
+        parts = []
+        if sv.get("command"):
+            parts.append(sv["command"])
+        for a in sv.get("args") or []:
+            parts.append(str(a))
+        cmd = " ".join(parts) if parts else "—"
+        cwd = rel(sv.get("cwd"))
+        results.append((source, name, port, cmd, cwd))
+
+def scan_launchers(path, source):
+    if not os.path.isfile(path):
+        return
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except Exception:
+        return
+    launchers = data.get("launchers") or {}
+    if not isinstance(launchers, dict):
+        return
+    for name, cfg in launchers.items():
+        if not isinstance(cfg, dict):
+            continue
+        parts = []
+        if cfg.get("command"):
+            parts.append(cfg["command"])
+        for a in cfg.get("args") or []:
+            parts.append(str(a))
+        cmd = " ".join(parts) if parts else "—"
+        cwd = rel(cfg.get("cwd"))
+        port = str(cfg["port"]) if cfg.get("port") else "—"
+        results.append((source, name, port, cmd, cwd))
+
+scan_mcp_like(os.path.join(root, ".vscode", "mcp.json"),  "vscode-mcp")
+scan_mcp_like(os.path.join(root, ".cursor", "mcp.json"),  "cursor-mcp")
+scan_mcp_like(os.path.join(root, ".mcp.json"),            "mcp-json")
+scan_mcp_like(os.path.join(root, "mcp.json"),             "mcp-json")
+scan_mcp_like(os.path.join(root, "claude_desktop_config.json"), "claude-desktop")
+scan_launchers(os.path.join(root, ".taskpilot", "mcp-launchers.json"), "taskpilot-launcher")
+
+# Deep inspect: 포트가 미상(—)인 행에 대해 cmd 에서 스크립트 파일을 찾아 그 안에서 포트 리터럴을 grep 한다.
+SCRIPT_EXT = re.compile(r"\.(py|js|ts|mjs|cjs|sh)$", re.I)
+PORT_PATTERNS = [
+    re.compile(r"uvicorn\.run\([^)]*port\s*=\s*(\d{2,5})"),
+    re.compile(r"app\.run\([^)]*port\s*=\s*(\d{2,5})"),
+    re.compile(r"\.listen\(\s*(\d{2,5})"),
+    re.compile(r"createServer\([^)]*\)\.listen\(\s*(\d{2,5})"),
+    re.compile(r"_PORT[\"']?\s*,\s*(\d{2,5})"),  # env var default like os.environ.get("MCP_SERVER_PORT", 8091)
+    re.compile(r"--port[=\s]+(\d{2,5})"),
+    re.compile(r"\bPORT\s*[:=]\s*(?:int\s*\(\s*)?(\d{2,5})"),
+    re.compile(r"\bport\s*[:=]\s*(?:int\s*\(\s*)?(\d{2,5})"),
+]
+
+def deep_port_lookup(cwd_rel, cmd):
+    if not cmd or cmd == "—":
+        return None
+    # cmd 토큰에서 스크립트로 보이는 파일 찾기
+    script = None
+    for tok in cmd.split():
+        if SCRIPT_EXT.search(tok):
+            script = tok
+            break
+    if not script:
+        return None
+    # cwd 해석: 상대면 root + cwd_rel + script, 절대면 그대로
+    if os.path.isabs(script):
+        candidates = [script]
+    else:
+        bases = []
+        if cwd_rel and cwd_rel != "—":
+            bases.append(cwd_rel if os.path.isabs(cwd_rel) else os.path.join(root, cwd_rel))
+        bases.append(root)
+        candidates = [os.path.join(b, script) for b in bases]
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        try:
+            text = open(path, "r", encoding="utf-8", errors="ignore").read()
+        except Exception:
+            continue
+        for pat in PORT_PATTERNS:
+            m = pat.search(text)
+            if m:
+                p = int(m.group(1))
+                if 1024 <= p <= 65535:
+                    return str(p)
+    return None
+
+deep_resolved = []
+for src, name, port, cmd, cwd in results:
+    if port == "—":
+        found = deep_port_lookup(cwd, cmd)
+        if found:
+            port = found
+            src = src + "+deep"
+    deep_resolved.append((src, name, port, cmd, cwd))
+
+for r in deep_resolved:
+    print("\t".join(str(x) for x in r))
+PYEOF
+}
+
 main() {
   local sub="${1:-}"; shift || true
   case "$sub" in
@@ -304,6 +461,7 @@ main() {
     start)    [ $# -ge 3 ] || die "usage: start <port> <cwd> <cmd...>";   cmd_start "$@" ;;
     restart)  [ $# -ge 3 ] || die "usage: restart <port> <cwd> <cmd...>"; cmd_restart "$@" ;;
     discover) cmd_discover "${1:-}" ;;
+    inspect)  cmd_inspect "${1:-}" ;;
     ""|help|-h|--help)
       awk 'NR==1 {next} /^#/ || /^[[:space:]]*$/ {print; next} {exit}' "$0"
       ;;
