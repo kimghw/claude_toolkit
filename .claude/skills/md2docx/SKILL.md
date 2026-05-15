@@ -1,23 +1,29 @@
 ---
 name: md2docx
-description: Markdown(.md) 파일을 Pandoc + 사전 준비된 Word 템플릿(.docx 또는 .dotx)으로 DOCX로 변환하고, 템플릿의 샘플 표 서식을 출력 표에 평탄화 주입해 스타일 상속 손실을 제거한다. 미정의 style 참조를 리포트한다. **호출 시 먼저 `extract-docx-styles`로 템플릿을 정비한 뒤 변환을 실행한다.**
+description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진입점 md2docx.py가 인자(파일 확장자)로 자동 분기 — docx만 주면 매핑만 수행해 <원본>_mapped.docx 저장, md+docx 주면 매핑 후 회사 양식으로 변환. --verify로 XML/PDF 검증. 회사 reference와 Pandoc 어휘 불일치(heading 1 vs Heading 1, Quote vs Block Text 등)는 SEMANTIC_HINTS/STUB_DEFINITIONS로 자동 매핑.
 ---
 
-# md2docx — Markdown → DOCX 변환·복제 가이드
+# md2docx — Markdown → DOCX 통합 파이프라인
 
-Word 템플릿으로 `.md` 파일을 `.docx`로 변환하고, **템플릿의 샘플 표 서식을 출력 표에 강제 주입**해 Pandoc이 만들어내는 스타일 상속 사각지대(고아 `pStyle`, 기본 `tblLook` 등)를 피한다.
+## 인자 형식
 
----
+단일 진입점 `md2docx.py`가 파일 확장자로 자동 분기:
 
-## 입력
+| 호출 | 동작 |
+|---|---|
+| `md2docx help` (또는 `-h`, `--help`, 인자 없음) | 사용법 출력 |
+| `md2docx <ref.docx>` | **매핑만** — `<원본>_mapped.docx` 생성 |
+| `md2docx <input.md> <ref.docx>` | **매핑 + 변환** — `<input>.docx` 생성 |
+| `md2docx <input.md> <ref.docx> --verify` | 위 + XML/PDF 검증 |
 
-| 파라미터 | 설명 | 형식 |
-|---|---|---|
-| `--md` | 변환할 Markdown 파일 | `.md` |
-| `--ref` | Word 템플릿 | `.docx` 또는 `.dotx` (자동 처리) |
-| `--out` | 출력 파일 경로 | `.docx` |
+옵션:
 
-`.dotx`는 자동으로 임시 `.docx`로 복사되어 Pandoc에 전달된다. 원본 `.dotx`는 변경되지 않는다.
+| 플래그 | 설명 |
+|---|---|
+| `--verify` | verify.py 호출해 XML + PDF 비교 |
+| `--out <file>` | 변환 결과 경로 덮어쓰기 |
+
+`<ref.docx>` 이름이 이미 `_mapped`로 끝나면 매핑 단계 자동 생략.
 
 ---
 
@@ -25,172 +31,134 @@ Word 템플릿으로 `.md` 파일을 `.docx`로 변환하고, **템플릿의 샘
 
 | 도구 | 용도 |
 |:---|:---|
-| `Skill` | 선행 단계로 [`extract-docx-styles`](../extract-docx-styles/SKILL.md) 호출 — 템플릿의 Pandoc 필수 `w:name` 정비. |
-| `Bash` | `python .claude/skills/md2docx/transform.py …` 실행(통합 파이프라인). 내부적으로 `pandoc --reference-doc=` + 샘플 표 평탄화 주입 + 고아 style 리포트를 한 번에 수행. 독립 실행이 필요하면 `clone_table_props.py` 직접 호출. |
-| `Read` | `transform.py` 출력 로그(orphan style·sample index 목록 등) 해석, 변환 결과 점검. |
-| (외부 CLI) | `pandoc` (필수, 사전 설치). Python 3.8+ 표준 라이브러리만 사용. |
+| `Bash` | `python .claude/skills/md2docx/md2docx.py ...` 실행 |
+| `Read` | 변환 결과 docx/PDF 검토 |
+| (외부 CLI) | `pandoc` (필수), `docx2pdf` (verify 시, Windows+MS Word) |
 
 ---
 
-## 호출 절차 (중요)
-
-### Step 0 — `extract-docx-styles` 선행 실행
-
-먼저 `extract-docx-styles` 스킬을 템플릿에 대해 실행해 스타일이 정비되어 있는지 확인한다:
-
-- Pandoc 필수 `w:name`(`Normal`, `heading 1~6`, `Table`) 존재 여부
-- `Table` 스타일 존재 (없으면 기존 `w:type="table"` 스타일을 `basedOn`으로 상속해 추가)
-- 여러 표 스타일이 있으면 사용자에게 기본값 확인
-
-### Step 1~ — `transform.py` 실행
-
-아래 "작업 절차" 섹션대로 진행.
-
----
-
-## 전제
-
-- Pandoc 설치 완료 (`pandoc --version` 확인)
-- Python 3.8+ (표준 라이브러리만 사용)
-- 템플릿이 `.docx` 또는 `.dotx` 형식이며 **최소 하나 이상의 표(샘플)** 를 포함
-
----
-
-## 핵심 원리 — 왜 "복제"인가
-
-### 기존 문제: 스타일 상속은 5단 계층, 어느 한 단에서 가려짐
-
-Pandoc은 표 셀 문단마다 `<w:pStyle w:val="Compact"/>`를 기록한다. 템플릿에 `Compact` 정의가 없으면 Word는 `Normal`로 폴백하고, 그 때의 `jc` 기본값(left)이 **표 스타일의 `jc=center`보다 우선**한다. 결과: 템플릿에는 가운데 정렬로 정의돼 있는데 출력은 왼쪽 정렬.
-
-### 해결: 샘플 표 속성을 평탄화해 direct formatting으로 주입
-
-1. 템플릿의 **샘플 표**(첫 번째 또는 `--sample-index N`으로 지정)에서 `<w:tblPr>`, `<w:tblGrid>` 추출
-2. 샘플이 참조하는 `<w:tblStyle>` 체인을 styles.xml에서 **평탄화**
-   - 기본 `<w:pPr>`/`<w:tcPr>`/`<w:trPr>`/`<w:tblPr>`
-   - 조건부 `<w:tblStylePr w:type="firstRow|firstCol|lastRow|...">` 각각의 블록
-3. 출력 표의 각 셀(row i, col j)에 대해 **OOXML 우선순위** 대로 조건부 서식을 overlay:
-
-   `wholeTable → band1/2 Horz → band1/2 Vert → firstCol → lastCol → firstRow → lastRow → corner cells`
-
-   - **줄무늬(banded)**: `band1Horz`/`band2Horz`/`band1Vert`/`band2Vert` 블록이 실제로 적용된다. 적용 조건은 ① 스타일 체인에 해당 블록이 존재하고, ② 샘플 표(또는 스타일)의 `<w:tblLook>`에서 `noHBand`/`noVBand`가 해제되어 있을 때. 밴드 크기는 스타일의 `<w:tblStyleRowBandSize>`/`<w:tblStyleColBandSize>`(기본 1)를 따르며, `firstRow`/`lastRow`/`firstCol`/`lastCol` 블록이 정의된 경우 해당 행·열은 body 범위에서 제외된다.
-
-4. 그 결과 effective pPr/tcPr을 셀에 **direct formatting** 으로 주입
-5. Markdown 명시 alignment(`|:---:|`, `|---:|`)는 기본 **보존** — `--override-jc`로 덮어쓰기 가능
-
-→ 스타일 상속을 거치지 않으므로 고아 `pStyle`·pandoc `tblLook` 무관하게 동작.
-
----
-
-## 작업 절차
-
-### 1. 변환·복제 통합 실행 (권장)
-
-[`transform.py`](./transform.py)가 Pandoc 변환 → 샘플 복제 → 고아 참조 리포트를 한 번에 수행한다:
-
-```bash
-python .claude/skills/md2docx/transform.py \
-  --md input.md \
-  --ref references/templates/your-template.docx \
-  --out output.docx
-```
-
-Windows PowerShell:
+## 호출 예시
 
 ```powershell
-python .claude\skills\md2docx\transform.py `
-  --md input.md `
-  --ref references\templates\your-template.docx `
-  --out output.docx
-```
+# 사용법
+python .claude\skills\md2docx\md2docx.py help
 
-출력 예:
+# 새 회사 양식 받았을 때 — 매핑만
+python .claude\skills\md2docx\md2docx.py company.docx
+# → company_mapped.docx 생성
 
-```
-[0/3] Template preflight (Pandoc readiness check)...
-        OK — template has required Pandoc style names.
-[1/3] Pandoc conversion...
-        cmd: pandoc input.md --reference-doc=... -o output.docx
-        OK (output.docx, 18111 bytes)
-[2/3] Apply template table formatting to output...
-        template tables: 1
-          [0] 4r x 5c  style='aa'  width=0 auto  tblLook=firstRow,firstColumn  borders=Y
-          → using sample index 0
-          style chain: aa -> a1
-          conditional regions: ['firstCol', 'firstRow']
-        target tables: 3
-        applied: 12 rows, 40 cells (markdown alignment preserved)
-        → cloned sample[0] (style chain: aa->a1) onto 3 output table(s); 12 rows, 40 cells.
-[3/3] Orphan style reference check...
-        Orphan style references (missing in template's styles.xml):
-          pStyle   BlockText, BodyText, Compact, FirstParagraph
-          rStyle   Hyperlink, VerbatimChar
-        -> Consider re-running extract-docx-styles to add these.
-```
+# 일상 변환 — md를 회사 양식 docx로
+python .claude\skills\md2docx\md2docx.py report.md company.docx
+# → report.docx 생성 (회사 양식 적용)
 
-### 2. 옵션
+# 변환 + 시각 검증
+python .claude\skills\md2docx\md2docx.py report.md company.docx --verify
 
-| 플래그 | 기본 | 설명 |
-|---|---|---|
-| `--sample-index N` | `0` | 템플릿에 표가 여러 개일 때 어느 것을 샘플로 쓸지 지정. 생략하면 첫 번째 표를 쓰고, 여러 개 있으면 목록이 출력돼 재실행할 수 있다 |
-| `--override-jc` | off | markdown `:---:`/`---:` 정렬을 무시하고 샘플 스타일의 `jc`로 전부 덮어씀 |
-| `--center-tables` | off | 출력 표들의 `<w:tblPr>`에 `<w:jc w:val="center"/>`를 주입해 페이지 기준 가운데 정렬 (셀 텍스트 정렬과 독립) |
-| `--no-clone-table` | off | 복제 단계 건너뛰고 레거시 `tblLook` 플래그만 보정 (템플릿에 샘플 표가 없거나 직접 formatting을 원할 때) |
-| `--dry-run` | off | 변환만 하고 복제·보정 생략 |
-| `--skip-preflight` | off | 템플릿 검증 건너뛰기 (`extract-docx-styles`가 이미 돈 경우) |
-| `--verbose` | off | 표별 행/셀 수, 조건부 영역 등 상세 출력 |
-
-### 3. 독립 실행 — 복제만 따로 (옵션)
-
-이미 생성된 docx에 복제만 돌리고 싶으면 [`clone_table_props.py`](./clone_table_props.py)를 직접 호출:
-
-```bash
-python .claude/skills/md2docx/clone_table_props.py \
-  --template references/templates/your-template.docx \
-  --target output.docx
-```
-
-샘플 표 목록만 확인:
-
-```bash
-python .claude/skills/md2docx/clone_table_props.py \
-  --template references/templates/your-template.docx \
-  --target output.docx \
-  --list-only
+# 매핑된 파일 직접 지정 (1회 매핑 후 반복 변환에 효율적)
+python .claude\skills\md2docx\md2docx.py report.md company_mapped.docx
+# → 매핑 단계 자동 스킵, 변환만 수행
 ```
 
 ---
 
-## 통합 워크플로우
+## 작동 원리
+
+### 단계 1: 매핑 (`map.py` 자동 호출)
+
+회사 reference.docx의 스타일에 Pandoc 어휘를 `basedOn` 상속으로 추가. 회사 양식은 그대로 유지.
+
+```xml
+<!-- 회사 원본 (그대로) -->
+<w:style w:styleId="1"><w:name w:val="heading 1"/>...</w:style>
+
+<!-- map.py가 추가 -->
+<w:style w:styleId="Heading1" w:customStyle="1">
+  <w:name w:val="Heading 1"/>
+  <w:basedOn w:val="1"/>
+</w:style>
+```
+
+### 매핑 우선순위 (`find_mapping`)
+
+1. user_override (`--map` JSON)
+2. exact (이미 일치)
+3. case_mismatch (대소문자만 다름)
+4. semantic (`SEMANTIC_HINTS` 의미 매칭)
+5. stub (`STUB_DEFINITIONS` 디폴트 생성)
+6. missing (skip)
+
+자동 매핑 결정 규칙: [`decisions.md`](./decisions.md)
+
+### 단계 1.5: Numbering 인식 — 사용자 확인 필요
+
+회사 reference의 `numbering.xml`에 list 정의(예: `1.`, `①`, `가.`, `제 1)`)가 있으면 `map.py`가 리포트의 "Numbering 정의" 섹션에 표시하고 stdout에 `[NUMBERING]` 신호를 출력한다.
+
+**이때 Claude는 반드시 다음을 수행:**
+
+1. 사용자에게 `AskUserQuestion`으로 묻는다:
+   > "회사 reference에 N개 numbering 정의가 있습니다 ([리포트 발췌]). markdown 리스트(`1.`, `2.`, `-`, `*`)에 회사 양식 numbering을 적용하시겠습니까?"
+   - 옵션 1: **예 — 회사 numbering 적용** (Word에서 List Paragraph 스타일에 numId 바인딩 안내)
+   - 옵션 2: **아니오 — Pandoc 기본 numbering 사용** (기본값, 그대로 진행)
+
+2. 응답이 **예**인 경우:
+   - 자동 매핑은 현재 제공되지 않음. Word에서 List Paragraph 스타일의 numbering을 회사 정의로 수동 변경 안내.
+   - 또는 mapping.json에 `"paragraph": {"List Paragraph": "회사 list 스타일명"}` 추가해 재실행.
+
+3. 응답이 **아니오** 또는 사용자가 numbering 무시를 선호하면 그대로 변환 진행.
+
+이 확인은 **새 reference.docx로 매핑할 때마다 1회** 묻는다. 결과는 작업 메모리에 유지하고 동일 reference 반복 사용 시 재질문하지 않는다.
+
+### 단계 2: 변환 (pandoc 호출)
 
 ```
-[입력] 사용자 Word 템플릿 (.docx/.dotx) + input.md
-         ↓
-[/md2docx 호출]
-         ├─ Step 0: extract-docx-styles 선행 실행 (템플릿 검증·정비)
-         ├─ Step 1: .dotx면 임시 .docx로 복사, Pandoc 변환
-         ├─ Step 2: 템플릿 샘플 표 속성 추출·평탄화 → 출력 표에 direct formatting으로 주입
-         └─ Step 3: 고아 style 참조 리포트 (자동 보정 안 함)
-         ↓
-    최종 output.docx
+pandoc <input.md> -o <output.docx> --reference-doc=<mapped.docx>
 ```
 
-- 템플릿에 **샘플 표가 여러 개**면 `[2/3]` 단계에서 목록이 출력되고 기본 index 0으로 진행 — 다른 것을 쓰려면 `--sample-index N`으로 재실행.
-- `extract-docx-styles`는 한 번 정비해두면 재실행 시 빠르게 통과(검증만).
+### 단계 3: 검증 (`verify.py` — `--verify` 시)
+
+매핑 적용/미적용 두 변환의:
+- XML 레벨: `<w:pStyle>`, `<w:rStyle>`, `<w:tblStyle>` 참조가 styles.xml에 정의됐는지
+- PDF 추출: `docx2pdf`로 두 PDF 만들어 시각 비교 (Windows + MS Word 필요)
 
 ---
 
-## 제한 사항
+## 작동 흐름
 
-- **샘플 표가 없으면 복제 불가.** 템플릿에 최소 하나의 `<w:tbl>`이 있어야 한다. 없으면 `--no-clone-table` 동작과 동일하게 레거시 `tblLook` 보정으로 폴백.
-- **미정의 style 참조는 리포트만.** 템플릿 수정은 `extract-docx-styles`의 책임.
-- **표 인스턴스별 개별 서식 불가**: 모든 출력 표가 동일 샘플 속성을 받는다. 표마다 다른 서식을 원하면 Word에서 수동 편집.
-- **Pandoc 버전별 출력 차이**: 일부 버전은 `tblLook`을 `<w:tblLook w:val="0420">` 비트필드로만 기록 — 레거시 경로는 속성·비트필드 둘 다 처리.
-- **상속 사이클**: 스타일 basedOn 체인에 사이클이 있으면 경고만 내고 중단.
+```
+[입력] <ref.docx> (필수) + <input.md> (선택) + --verify (선택)
+   ↓
+[자동 분기]
+   ├─ docx만:   매핑만 수행 → <원본>_mapped.docx
+   ├─ md+docx:  매핑 + 변환 → <input>.docx
+   └─ +--verify: 위 + 두 PDF 비교
+   ↓
+[출력] _mapped.docx (Pandoc reference) + (옵션) 변환 docx + (옵션) verify_out/
+```
 
 ---
 
-## 관련 스킬·파일
+## 자주 묻는 질문
 
-- [`extract-docx-styles`](../extract-docx-styles/SKILL.md) — 템플릿 스타일 정비 (선행)
-- [`transform.py`](./transform.py) — 통합 파이프라인 (CLI)
-- [`clone_table_props.py`](./clone_table_props.py) — 샘플 표 속성 복제 엔진 (독립 실행 가능, transform.py가 내부 호출)
+**Q. 회사 reference에 코드 블록/링크 스타일이 없어요.**
+→ `STUB_DEFINITIONS`이 합리적 디폴트(Consolas 폰트, 파란 링크 등)로 자동 생성. 회사 자체 스타일이 있으면 `map.py --map` JSON으로 지정. 결정 근거는 [`decisions.md`](./decisions.md).
+
+**Q. 표 서식이 reference대로 안 나옵니다.**
+→ Pandoc의 표 스타일 상속 사각지대. 셀 단위 direct formatting이 필요하면 toolkit의 `md2docx`(샘플 표 복제 방식, `c:\claude_toolkit\.claude\skills\md2docx\`).
+
+**Q. 코드 블록 토큰 색이 안 나옵니다.**
+→ `pandoc ... --highlight-style=tango` 옵션 추가. md2docx.py에서 옵션 전달이 필요하면 SKILL.md 확장 검토.
+
+**Q. 헤딩이 "제 N 편/장" 같은 회사 번호로 안 나옵니다.**
+→ 사용한 reference가 `_mapped.docx`인지 확인. 회사 reference의 `heading N` 스타일에 그 번호 매김이 정의돼 있는지 확인.
+
+---
+
+## 관련 파일
+
+- [`md2docx.py`](./md2docx.py) — 통합 진입점 (인자 분기)
+- [`map.py`](./map.py) — 매핑 분석·적용 엔진 (`--apply`, `--map`)
+- [`verify.py`](./verify.py) — 변환·XML·PDF 검증
+- [`decisions.md`](./decisions.md) — 자동 매핑 결정 규칙 기록
+- [`references/pandoc-docx-styles.md`](./references/pandoc-docx-styles.md) — Pandoc 인식 스타일 목록
+- [`references/reference_reg.docx`](./references/reference_reg.docx) — 원본 회사 템플릿
+- [`references/reference_reg_mapped.docx`](./references/reference_reg_mapped.docx) — 매핑 적용된 reference

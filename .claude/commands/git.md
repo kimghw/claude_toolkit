@@ -1,5 +1,5 @@
 ---
-description: "git 작업 자동화. 인자 없으면 stage+commit+push (origin 없으면 GitHub 원격 자동 생성), 'pull'이면 pull, 'public|private'이면 원격 저장소 공개여부 변경"
+description: "git 작업 자동화. 인자 없으면 stage+commit+push, 'pull'이면 pull, 'public|private'이면 원격 저장소 공개여부 변경"
 allowed-tools: Bash, Read, Grep, Glob
 ---
 
@@ -16,7 +16,6 @@ allowed-tools: Bash, Read, Grep, Glob
    /git [인자]
 
    (없음)            stage(-A) + 커밋 메시지 자동 생성 + push
-                     (origin 미설정 시 gh로 GitHub 원격 저장소를 private으로 자동 생성)
    pull              git pull 실행
    public            현재 레포의 원격 저장소(origin)를 공개(public)로 전환
    private           현재 레포의 원격 저장소(origin)를 비공개(private)로 전환
@@ -25,20 +24,12 @@ allowed-tools: Bash, Read, Grep, Glob
    ```
 
 1. **인자가 비어 있거나 없는 경우** (기본 동작):
-   - `git rev-parse --is-inside-work-tree`로 git 저장소 여부 확인. git 저장소가 아니면 "현재 디렉터리는 git 저장소가 아닙니다. `git init` 먼저 실행하세요." 출력 후 종료(자동 init 안 함).
    - `git add -A`로 모든 변경사항 스테이지
    - `git diff --cached --stat`으로 스테이지된 내용 확인
    - 변경사항이 없으면 "커밋할 내용 없음" 출력 후 종료
    - 변경사항이 있으면 diff를 분석해 간결한 커밋 메시지 자동 생성 (한국어, 1줄)
    - `git commit`으로 커밋
-   - **원격(origin) 존재 여부 확인** — `git remote get-url origin`이 실패하면 다음 절차로 GitHub 원격을 자동 생성한 뒤 push:
-     - 사전 조건: `gh --version`과 `gh auth status` 점검. 둘 중 하나라도 실패하면 안내 메시지 출력 후 push 단계 건너뛰고 종료("커밋은 완료됨, gh 설치/로그인 후 `gh repo create` 또는 `/git` 재실행" 안내).
-     - 레포 이름: 현재 작업 디렉터리 basename(`basename "$(pwd)"`)을 그대로 사용. 사용자에게 확인 메시지로 노출.
-     - 가시성 기본값: **private**. (생성 후 공개 전환이 필요하면 `/git public` 사용)
-     - 생성 + 원격 연결 + 초기 푸시를 한 번에 수행: `gh repo create <repo-name> --source=. --remote=origin --push --private`
-     - 실패(이미 동일 이름 존재 등) 시 gh 에러를 그대로 출력하고, 사용자가 다른 이름/소유자로 재시도하거나 기존 레포에 수동으로 `git remote add origin <URL>` 후 `/git` 재실행하도록 안내.
-     - 성공 시 생성된 레포 URL을 출력.
-   - 원격이 이미 있으면 `git push`로 현재 브랜치에 푸시 (upstream 없으면 `-u origin <branch>` 사용)
+   - `git push`로 현재 브랜치에 푸시 (upstream 없으면 `-u origin <branch>` 사용)
 
 2. **인자가 `pull`인 경우**:
    - `git pull`을 실행하고 결과를 보여줌
