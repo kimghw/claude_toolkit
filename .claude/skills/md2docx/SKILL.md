@@ -21,6 +21,11 @@ description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진
 | 플래그 | 설명 |
 |---|---|
 | `--verify` | verify.py 호출해 XML + PDF 비교 |
+| `--skip-lint` | markdown lint(넘버링/heading 사전 검토) 건너뛰기 |
+| `--skip-strip` | 패턴 검출(`references/strip_patterns.json`) 단계 건너뛰기 (모두 유지) |
+| `--apply-strip <pid1,pid2,...>` | 선택된 패턴을 원본에 적용(원본은 보존, `<md_stem>_stripped.md` 생성)한 뒤 그것을 입력으로 변환 |
+| `--no-postprocess` | 변환 후 표 디자인 post-processing 건너뛰기 (기본은 활성) |
+| `--min-col-cm <N>` | (postprocess 옵션) 모든 표 칼럼/셀(dxa) 너비를 이 값(cm) 이상으로 강제 — 기본 1.0, `0` 으로 끄기 |
 | `--out <file>` | 변환 결과 경로 덮어쓰기 |
 
 `<ref.docx>` 이름이 이미 `_mapped`로 끝나면 매핑 단계 자동 생략.
@@ -108,11 +113,114 @@ python .claude\skills\md2docx\md2docx.py report.md company_mapped.docx
 
 이 확인은 **새 reference.docx로 매핑할 때마다 1회** 묻는다. 결과는 작업 메모리에 유지하고 동일 reference 반복 사용 시 재질문하지 않는다.
 
+### 단계 1.6: Markdown lint — 넘버링/heading 사전 검토 (사용자 확인 필요)
+
+pandoc 변환 직전, `lint.py` 가 markdown 원본의 모호한 넘버링/heading 기호를 검출한다.
+외부 도구 우선순위: `markdownlint-cli2` → `markdownlint` → `pymarkdown` → 내장 fallback.
+
+검출 대상 (모두 pandoc 출력에서 회사 양식과 충돌 가능):
+
+| Rule | 의미 |
+|---|---|
+| MD001 | heading 레벨 비순차 (h1 → h3 처럼 건너뜀) |
+| MD003 | atx (`# H`) 와 setext (`H\n===`) 혼용 |
+| MD004 | bullet 기호 혼용 (`-`, `*`, `+` 가 섞임) |
+| MD025 | 한 문서에 `# H1` 다수 |
+| MD029 | ordered list 번호 비일관 (`1.`,`1.`,`1.` vs `1.`,`2.`,`3.` 혹은 `1)` 혼용) |
+| MD030 | 리스트 마커 뒤 공백 수 비일관 |
+
+**Claude 의 처리 절차** — `lint.py` 가 `returncode=2` 로 종료하고 `[LINT-AMBIGUOUS]` 줄이 출력되면:
+
+1. `AskUserQuestion` 으로 사용자에게 어떤 스타일을 사용할지 묻는다. 예:
+
+   - 넘버링 모호 (MD029): "ordered list 번호를 `1.`,`2.`,`3.` (sequential) 로 통일할까요, 아니면 모두 `1.` 로 둘까요?"
+   - bullet 혼용 (MD004): "bullet 기호를 `-`, `*`, `+` 중 어떤 것으로 통일할까요?"
+   - heading 혼용 (MD003): "heading 을 모두 atx(`#`) 로 통일할까요, setext(`===`/`---`) 로 둘까요?"
+   - h1 다수 (MD025): "최상위 `# 제목` 이 여러 개입니다. 하나만 남기고 나머지는 `##` 로 강등할까요?"
+   - heading 비순차 (MD001): "h1 다음에 바로 h3 이 옵니다. 중간에 h2 를 넣을까요, 아니면 h3 을 h2 로 올릴까요?"
+
+2. 답에 따라:
+   - **수정**: 사용자 답대로 `.md` 파일을 편집한 뒤 재실행 (`md2docx.py <md> <ref.docx>`)
+   - **그대로 진행**: `--skip-lint` 를 붙여 재실행 (`md2docx.py <md> <ref.docx> --skip-lint`)
+
+이 확인은 lint 가 모호성을 감지할 때마다 묻는다. 사용자가 `--skip-lint` 로 진행하기로 한 경우, 같은 파일 재변환 시에도 동일 플래그를 유지한다.
+
+### 단계 1.7: 패턴 검출 — 회사 양식과 충돌하는 markdown 부분 제거 (사용자 확인 필요)
+
+회사 reference 의 자동 서식(heading 자동 번호, 표 자동 캡션 등)과 markdown 원본이 **중복되는 부분**을
+누적 관리되는 정규식 패턴 카탈로그([`references/strip_patterns.json`](./references/strip_patterns.json))로 검출한다.
+
+`strip.py` 가 .md 에서 매칭을 찾으면 패턴별 `[STRIP-MATCH] <id> (N 곳)` 신호와 sample(L번호, before, after)을 출력하고 `returncode=3` 으로 종료.
+
+**패턴 분류 (`kind` 필드)**
+
+| kind | 의미 | AskUserQuestion 옵션 형태 |
+|---|---|---|
+| `remove` | reference 자동 서식과 중복되는 수동 표기 제거 | "제거" vs "유지" |
+| `promote` | bullet/ordered list 마커를 heading 으로 승격해 reference heading 자동 번호 적용 | "heading 으로 승격" vs "마커 유지" |
+
+**현재 카탈로그**
+
+| id | kind | 정규식 → 치환 | 효과 (reference_reg 기준) |
+|---|---|---|---|
+| `heading-manual-number` | remove | `^(#+\s+)\d+(?:\.\d+)*\.?\s+` → `\1` | `## 1. 핵심` → `## 핵심` (회사 h2 자동 번호 `제 1 장` 만 남김) |
+| `promote-top-bullets-to-h6` | promote | `^(- \|\* \|\+ )` → `###### ` | `- 항목` → `###### 항목` (h6 `(1)(2)(3)` 자동 번호) |
+| `promote-top-ordered-to-h5` | promote | `^(\d+)[.)]\s+` → `##### ` | `1. 단계` → `##### 단계` (h5 `1.2.3.` 자동 번호) |
+| `remove-hrule` | remove | `^[ \t]*(?:-{3,}\|\*{3,}\|_{3,})[ \t]*\r?\n?` → '' | `---`, `***`, `___` 같은 horizontal rule 줄 통째 제거 (회사 양식은 heading 자동 번호로 구분) |
+
+**원본 .md 는 절대 수정되지 않는다.** 패턴 적용 결과는 같은 폴더에 접미사 `_stripped` 를 붙인 새 파일로 저장된다 (`<원본>_stripped.md`). 출력 docx 는 원본 stem 기준 (`<원본>.docx`).
+
+**Claude 의 처리 절차** — `strip.py` 가 returncode=3 이면 매칭된 패턴 **각각에 대해** `AskUserQuestion` 호출. `kind` 에 따라 옵션 문구를 맞춘다:
+
+`kind=remove` (예: heading-manual-number):
+> "`<패턴명>` 이 N 곳에서 매칭됐습니다. 이유: `<reason>`. 예: `<before>` → `<after>`. 제거할까요?"
+> - 옵션 1: **제거**
+> - 옵션 2: **유지**
+
+`kind=promote` (예: promote-top-bullets-to-h6):
+> "`<패턴명>` 이 N 곳에서 매칭됐습니다. 이유: `<reason>`. 예: `<before>` → `<after>`. heading 으로 승격할까요, 마커로 유지할까요?"
+> - 옵션 1: **heading 으로 승격** (회사 양식 자동 번호 적용)
+> - 옵션 2: **마커 유지** (pandoc 기본 bullet/list)
+
+각 패턴 답을 모은 뒤:
+- **제거할 패턴이 있음** → 해당 id 들을 쉼표로 묶어 재실행:
+  ```
+  python md2docx.py <md> <ref.docx> --apply-strip <pid1>,<pid2>
+  ```
+  내부적으로 `strip.py --apply` 가 호출되어 `<md_stem>_stripped.md` 가 만들어지고, 그 파일이 pandoc 입력으로 사용됩니다. 원본은 그대로.
+- **모두 유지** → `--skip-strip` 추가해 재실행 (원본 .md 가 그대로 pandoc 입력)
+
+스탠드얼론 사용도 가능:
+```
+python strip.py <md> --apply <pid1> [<pid2>...]
+  → <md_stem>_stripped.md 생성, [STRIP-OUT] 경로 출력
+python strip.py <md> --apply <pid> --out custom.md
+  → 지정 경로로 저장
+```
+
+**새 패턴 추가** — `references/strip_patterns.json` 의 `patterns` 배열에 항목 추가:
+- `id` (영문 kebab-case), `name`, `description`, `reason`, `pattern`, `replace`, `flags`, `sample` 필수
+- JSON 이므로 정규식 백슬래시는 두 번 (`\\d`, `\\s`)
+- 결정 사항은 카탈로그에 누적되므로, 다음 .md 변환 시 동일 검사가 자동 적용됨
+
 ### 단계 2: 변환 (pandoc 호출)
 
 ```
 pandoc <input.md> -o <output.docx> --reference-doc=<mapped.docx>
 ```
+
+### 단계 2.5: 표 디자인 post-processing
+
+pandoc 은 `<w:tblPr>` 의 `<w:tblLook>` 을 `0020`(firstRow only) 로 박고 셀에 `cnfStyle` 도 추가하지 않아, reference 의 Table Grid 스타일에 정의된 firstRow/firstCol conditional (주황 `#E97132` / 연하늘 `#C1E4F5`) 채움이 활성화되지 않는다.
+
+`postprocess_tables.py` 가 변환 결과 docx 를 후처리해:
+
+1. 모든 `<w:tblPr>` 의 `<w:tblLook>` → `04A0` (firstRow + firstColumn + noVBand) 로 교체
+2. 첫 행 셀에 `cnfStyle firstRow="1"` 추가 (첫 셀은 firstRow + firstColumn)
+3. 나머지 행 첫 열 셀에 `cnfStyle firstColumn="1"` 추가
+4. 표 셀 단락의 `pStyle="Compact"` 제거 (회사 본문 상속)
+
+`--no-postprocess` 로 끌 수 있음 (기본은 활성).
 
 ### 단계 3: 검증 (`verify.py` — `--verify` 시)
 
@@ -157,6 +265,10 @@ pandoc <input.md> -o <output.docx> --reference-doc=<mapped.docx>
 
 - [`md2docx.py`](./md2docx.py) — 통합 진입점 (인자 분기)
 - [`map.py`](./map.py) — 매핑 분석·적용 엔진 (`--apply`, `--map`)
+- [`lint.py`](./lint.py) — markdown 넘버링/heading 사전 검토 (외부 markdownlint 우선, 내장 fallback)
+- [`strip.py`](./strip.py) — 패턴 카탈로그 기반 검출·치환 (사용자 확인 필요)
+- [`references/strip_patterns.json`](./references/strip_patterns.json) — 누적 관리되는 정규식 패턴 카탈로그
+- [`postprocess_tables.py`](./postprocess_tables.py) — pandoc 출력 docx 의 표 디자인 후처리 (tblLook + cnfStyle)
 - [`verify.py`](./verify.py) — 변환·XML·PDF 검증
 - [`decisions.md`](./decisions.md) — 자동 매핑 결정 규칙 기록
 - [`references/pandoc-docx-styles.md`](./references/pandoc-docx-styles.md) — Pandoc 인식 스타일 목록
