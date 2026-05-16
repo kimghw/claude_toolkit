@@ -212,7 +212,7 @@ OS 정리 안전 가드:
    <references 의 .toolignore 내용 그대로>
    ```
 
-   - 빈 source 도 헤더는 출력하되 본문은 빈 줄로.
+   - **빈 source(0B) 는 collection 단계에서 스킵** — 헤더도 출력하지 않는다. 의도: 아직 채워지지 않은 placeholder 파일이 target 에 노이즈 헤더만 남기는 상황을 방지. `.claude/skills/<name>/CLAUDE.md` 또는 `.claude/references/CLAUDE.md` 가 존재하지만 빈 파일이면 그 source 는 없는 셈치고 다음으로 넘긴다. effective source 가 0개로 떨어지면 그 그룹은 skip (인자 없음 동작의 step 1 과 동일).
    - source 사이는 빈 줄 한 줄로 분리.
 
 3. **Target 갱신** (그룹별, 마커 형식만 다름):
