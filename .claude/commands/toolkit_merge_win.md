@@ -168,7 +168,7 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 
 ### 0. `help` / `-h` / `--help` — 인자 도움말
 
-- 본 명령이 받는 인자(인자 없음=`diff`, `pull`, `push [<filepath>...] [--allow-dirty-origin]`, `diff`)와 각 동작 설명만 요약 출력하고 종료. 원본 탐지·**origin sync 점검**·파일 복사·git 작업 전부 수행하지 않는다.
+- 본 명령이 받는 인자(인자 없음=`push`, `pull`, `push [<filepath>...] [--allow-dirty-origin]`, `diff`)와 각 동작 설명만 요약 출력하고 종료. 원본 탐지·**origin sync 점검**·파일 복사·git 작업 전부 수행하지 않는다.
 
 ### 1. `pull` — 원본 → 로컬, **교집합만**
 
@@ -265,15 +265,15 @@ Windows/WSL 혼용 환경에서 심볼릭 링크가 번거롭거나 동작하지
 
 ### 4. 인자 없음 또는 기타
 
-- 인자 없음 → **`diff`와 동일하게 동작** (변경 미리보기만, 실제 파일 변경·`git commit`·`push` 없음). 파괴적 동작(`pull`/`push`)은 사용자가 반드시 **명시적으로 입력**해야만 수행된다.
+- 인자 없음 → **`push` 와 동일하게 동작** (로컬 → 원본 전체 동기화 + `git commit + push`). 사용자가 자주 부르는 동작을 기본값으로 둠.
 - 첫 번째 인자가 `pull` / `push` / `diff` 가 아닌 미상의 토큰이면 → `pull` / `push` 의 부속 인자(filepath 등)인지 모호하므로 사용법 요약 출력 후 종료. 부분 push 는 반드시 첫 토큰을 `push` 로 시작해야 인식된다 (예: `push commands/foo.md`).
 - 알 수 없는 인자 → 사용법 요약 출력 후 종료.
 
-> ⚠ **안전 기본값**: 인자 없이 `/toolkit_merge_win` 을 호출하면 `diff` 와 동일하게 변경 미리보기만 표시한다. 원본 레포를 덮어쓰는 `push` 는 **반드시 명시적으로** `/toolkit_merge_win push` 로 호출해야 수행된다. `pull` 도 마찬가지.
+> ⚠ **기본 동작은 push (파괴적)**: 인자 없이 `/toolkit_merge_win` 을 호출하면 즉시 로컬 `.claude/` 를 원본에 복사하고 `git commit + push` 까지 수행한다. 영향 범위가 큰 변경 전에는 먼저 `/toolkit_merge_win diff` 로 미리보기 권장. pull 은 별도 인자 필요.
 
 ## 예시
 
-- `/toolkit_merge_win` → `diff`와 동일 (변경 미리보기만, 실제 파일 변경·`git commit`·`push` 없음).
+- `/toolkit_merge_win` → `push` 와 동일 (로컬 → 원본 전체 동기화 + `git commit + push`).
 - `/toolkit_merge_win pull` → 원본의 최신 버전으로 로컬의 기존 파일만 갱신 (신규 파일 추가 없음). 원본 dirty 면 경고 후 사용자 확인.
 - `/toolkit_merge_win push` → 로컬 수정분을 **전체** 원본에 복사 후 `git commit + push`. **원본 dirty 면 기본 중단**.
 - `/toolkit_merge_win push --allow-dirty-origin` → 원본 dirty 에도 불구하고 강제 진행(혼합 커밋이 생성될 수 있음).

@@ -59,6 +59,119 @@ def verify_xml(docx_path):
     return {"ok": ok, "missing": missing}
 
 
+# ---------------------------------------------------------------------------
+# 페이지 레이아웃 검증: pgSz/pgMar/cols/docGrid 가 reference 와 동일한지
+# ---------------------------------------------------------------------------
+
+_SECTPR_RE = re.compile(r'<w:sectPr\b[^>]*>.*?</w:sectPr>', re.DOTALL)
+_PG_ELEM_PATTERNS = {
+    'pgSz':    re.compile(r'<w:pgSz\b[^/]*/>'),
+    'pgMar':   re.compile(r'<w:pgMar\b[^/]*/>'),
+    'cols':    re.compile(r'<w:cols\b[^/]*/>'),
+    'docGrid': re.compile(r'<w:docGrid\b[^/]*/>'),
+}
+_ATTR_RE = re.compile(r'(\w+:\w+)="([^"]*)"')
+
+
+def _parse_attrs(elem_xml: str) -> dict:
+    """'<w:pgMar w:top="1701" w:right="1440" ... />' → {'w:top': '1701', ...}"""
+    return dict(_ATTR_RE.findall(elem_xml))
+
+
+def _last_sect_page_elements(doc_xml: str) -> dict:
+    """document.xml 의 마지막 sectPr 에서 pgSz/pgMar/cols/docGrid 원본 XML 을 dict 로 반환."""
+    sects = _SECTPR_RE.findall(doc_xml)
+    if not sects:
+        return {}
+    last = sects[-1]
+    out = {}
+    for key, pat in _PG_ELEM_PATTERNS.items():
+        m = pat.search(last)
+        if m:
+            out[key] = m.group(0)
+    return out
+
+
+def verify_page_layout(docx_path, reference_path):
+    """변환 docx 의 페이지 레이아웃(pgSz/pgMar/cols/docGrid) 이 reference 와 일치하는지 검증.
+
+    Returns: {
+        'match':   bool,                   # 모든 요소·속성 일치
+        'elements': {                      # 요소별 비교 결과
+            'pgMar': {'present': True, 'attrs': {...}, 'ref_attrs': {...}, 'diff': [...]},
+            ...
+        },
+        'missing_in_target':   [요소 목록],  # reference 엔 있지만 target 엔 없는 요소
+    }
+    """
+    with zipfile.ZipFile(docx_path) as z:
+        doc = z.read("word/document.xml").decode("utf-8")
+    with zipfile.ZipFile(reference_path) as z:
+        ref_doc = z.read("word/document.xml").decode("utf-8")
+
+    tgt = _last_sect_page_elements(doc)
+    ref = _last_sect_page_elements(ref_doc)
+
+    elements = {}
+    missing = []
+    all_match = True
+    for key in ('pgSz', 'pgMar', 'cols', 'docGrid'):
+        if key not in ref:
+            continue  # reference 에 없으면 검증 대상 아님
+        if key not in tgt:
+            missing.append(key)
+            all_match = False
+            elements[key] = {'present': False, 'ref_attrs': _parse_attrs(ref[key])}
+            continue
+        ref_attrs = _parse_attrs(ref[key])
+        tgt_attrs = _parse_attrs(tgt[key])
+        diff = []
+        # reference 의 모든 속성이 target 과 동일한 값이어야 함 (target 의 추가 속성은 허용)
+        for k, v in ref_attrs.items():
+            if tgt_attrs.get(k) != v:
+                diff.append((k, tgt_attrs.get(k), v))  # (attr, target, reference)
+        if diff:
+            all_match = False
+        elements[key] = {
+            'present': True,
+            'attrs': tgt_attrs,
+            'ref_attrs': ref_attrs,
+            'diff': diff,
+        }
+    return {
+        'match': all_match,
+        'elements': elements,
+        'missing_in_target': missing,
+    }
+
+
+def print_page_layout_report(label, docx_path, result):
+    print(f"\n  [{label}] {Path(docx_path).name}")
+    if result['match']:
+        print(f"  OK: 페이지 레이아웃 일치 (pgSz/pgMar/cols/docGrid)")
+    else:
+        print(f"  MISMATCH: 페이지 레이아웃 불일치")
+    for key, info in result['elements'].items():
+        if not info.get('present', True):
+            print(f"    {key:8} : (target 에 없음) reference={info['ref_attrs']}")
+            continue
+        if not info.get('diff'):
+            # 일치하는 핵심 값 요약 — pgMar 만 상세 표시
+            if key == 'pgMar':
+                a = info['attrs']
+                summary = ' '.join(f"{k.split(':')[-1]}={a.get(k,'?')}"
+                                   for k in ('w:top','w:right','w:bottom','w:left','w:header','w:footer'))
+                print(f"    {key:8} : OK ({summary})")
+            else:
+                print(f"    {key:8} : OK")
+        else:
+            print(f"    {key:8} : DIFF")
+            for attr, tgt_v, ref_v in info['diff']:
+                print(f"      {attr}: target={tgt_v!r} reference={ref_v!r}")
+    if result['missing_in_target']:
+        print(f"  MISSING IN TARGET: {result['missing_in_target']}")
+
+
 def convert_pdf(docx_path, pdf_path):
     try:
         from docx2pdf import convert
@@ -128,6 +241,16 @@ def main():
     improved = len(r_no["missing"]) - len(r_mp["missing"])
     print()
     print(f"  >>> 매핑 효과: missing {len(r_no['missing'])} -> {len(r_mp['missing'])} ({'+' if improved >= 0 else ''}{improved} 개선)")
+
+    print()
+    print("  --- 페이지 레이아웃 검증 (reference 와 동일해야 함) ---")
+    pl_no = verify_page_layout(no_map_docx, mapped_ref)
+    pl_mp = verify_page_layout(mapped_docx, mapped_ref)
+    print_page_layout_report("매핑 없음", no_map_docx, pl_no)
+    print_page_layout_report("매핑 적용", mapped_docx, pl_mp)
+    print()
+    print(f"  >>> 페이지 레이아웃: 매핑없음={'일치' if pl_no['match'] else '불일치'}, "
+          f"매핑적용={'일치' if pl_mp['match'] else '불일치'}")
 
     if not args.no_pdf:
         print()

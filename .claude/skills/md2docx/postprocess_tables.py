@@ -411,6 +411,7 @@ def postprocess(docx_in: Path, docx_out: Path,
     new_doc, n_tables = process_document_xml(
         doc_xml, ref_tblpr_inner=ref_tblpr_inner, min_col_twips=min_col_twips,
     )
+
     contents['word/document.xml'] = new_doc.encode('utf-8')
 
     with zipfile.ZipFile(docx_out, 'w', zipfile.ZIP_DEFLATED) as zout:

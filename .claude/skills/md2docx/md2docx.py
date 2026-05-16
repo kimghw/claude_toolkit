@@ -311,6 +311,23 @@ def main():
             print(pp_result.stderr, file=sys.stderr)
             print(f"      [POSTPROCESS-WARN] returncode={pp_result.returncode} — 변환 결과는 유지")
 
+    # === Step 2.6: 페이지 레이아웃 post-processing ===
+    if "--no-postprocess" not in flags:
+        print()
+        print(f"[2.6/?] 페이지 post-processing: {out.name}")
+        pp_page_result = subprocess.run(
+            [sys.executable, str(here / "postprocess_page.py"), str(out),
+             "--reference", str(mapped)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=_subenv(),
+        )
+        for line in pp_page_result.stdout.splitlines():
+            if line.startswith("[POSTPROCESS-PAGE"):
+                print(f"      {line}")
+        if pp_page_result.returncode != 0:
+            print(pp_page_result.stderr, file=sys.stderr)
+            print(f"      [POSTPROCESS-PAGE-WARN] returncode={pp_page_result.returncode} — 변환 결과는 유지")
+
     # === Step 3: verify (옵션) ===
     if "--verify" in flags:
         verify_dir = md.parent / "verify_out"
