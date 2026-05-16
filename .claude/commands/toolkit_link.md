@@ -1,13 +1,23 @@
 ---
-description: "kimghw/claude_toolkit와 현재 프로젝트 .claude/를 심볼릭 링크로 연결 (pull: 원본→로컬, promote: 로컬→원본, unlink: 로컬 링크 제거, status: 현재 연결 상태 조회)"
+description: "[WSL/Linux 전용] kimghw/claude_toolkit와 현재 프로젝트 .claude/를 심볼릭 링크로 연결 (pull: 원본→로컬, promote: 로컬→원본, unlink: 로컬 링크 제거, status: 현재 연결 상태 조회). Windows에서는 /toolkit_sync 사용."
 allowed-tools: Bash, Read, Glob, AskUserQuestion
 ---
 
 <!-- markdownlint-disable -->
 
-# /toolkit_link 명령
+# /toolkit_link 명령 — WSL / Linux / macOS 전용
 
 인자: $ARGUMENTS
+
+## 대상 OS
+
+본 명령은 **POSIX 심볼릭 링크**(`ln -s`)에 의존하므로 다음 환경에서만 동작한다:
+
+- WSL (Windows Subsystem for Linux)
+- Linux
+- macOS
+
+Windows(Git Bash/MSYS/Cygwin 포함, WSL이 아닌 native Windows) 환경에서는 심볼릭 링크 권한·동작 차이로 인해 안전하지 않다. Windows 에서는 파일 복사 방식인 **`/toolkit_sync`** 를 사용한다. `/set_toolkit` 이 OS 를 감지해 호출한 프로젝트의 `.claude/commands/` 에서 본 파일을 자동으로 정리한다.
 
 ## 경로 정의
 
@@ -31,6 +41,21 @@ allowed-tools: Bash, Read, Glob, AskUserQuestion
 
 - **`settings.local.json`**: 프로젝트별 로컬 설정(권한 허용 목록 등)으로, 소비자 프로젝트마다 내용이 달라야 한다. 어떤 모드(pull/promote/conflict/`all`/인터랙티브)에서도 **링크·이동·복사 대상에서 영구 제외**한다. 사용자가 명시적으로 `settings.local.json`을 인자로 넘기더라도 처리하지 말고 "제외 대상" 사유와 함께 스킵 보고만 한다.
 - **`.gitignore`, `settings.json`**(존재 시): 위와 동일하게 프로젝트별 설정이므로 제외.
+- **`.toolignore` 매칭 항목** — 아래 별도 절차로 처리.
+
+### `.toolignore` 처리 (pull / promote / unlink / status 공통)
+
+프로젝트 루트(`$CLAUDE_PROJECT_DIR/.toolignore`)에 파일이 있으면, 거기 적힌 패턴에 매칭되는 `.claude/<rel>` 경로는 본 명령의 동작에서 **제외**된다. "프로젝트 전용 자산은 toolkit 과 링크 연결되지 않게" 하는 메커니즘.
+
+- 파일 위치: **`$CLAUDE_PROJECT_DIR/.toolignore`** (없으면 빈 ignore 로 간주).
+- 형식 (gitignore 단순화 버전): 한 줄에 한 패턴, `#` 주석, 빈 줄 무시. 끝이 `/` 면 디렉토리 prefix match, 그 외는 fnmatch glob. 매칭 기준은 `.claude/<rel>` 의 `<rel>` 부분.
+- 적용 시점:
+  - **pull / promote (인터랙티브 + 명시 경로)**: 매칭 항목은 후보 목록에서 제외, 보고에 `[ignored]` 로 표시.
+  - **인터랙티브 multiSelect 후보**: 매칭 항목은 선택지에서 빠짐 (라벨 뒤에 `(ignored)` 로 표시하지 않고 아예 제외).
+  - **명시 경로 호출**: 사용자가 매칭 경로를 인자로 넘기면 "`<rel>` 은 .toolignore 매칭으로 처리 대상에서 제외됨" 보고 후 그 항목만 skip (다른 인자는 계속 처리).
+  - **unlink**: 매칭 항목은 unlink 후보에서 제외 (이미 링크된 상태면 사용자가 .toolignore 추가 후 별도로 unlink 호출하도록 안내).
+  - **status / list**: 매칭 항목은 별도 `[ignored — .toolignore]` 카테고리로 분리 표시. 변경 없는 조회 모드라 정보만 보여줌.
+- 보고: 처리 결과 끝에 `[.toolignore] <N>개 항목 제외` 한 줄.
 
 ## 동작 규칙
 

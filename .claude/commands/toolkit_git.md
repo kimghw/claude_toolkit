@@ -1,11 +1,21 @@
 ---
-description: "claude_toolkit 레포 git 자동화. ~/.claude/toolkit_dir 에 등록된 경로에서 동작 (어디서 호출하든 동일). 인자 없으면 stage+commit+push, 'pull'=pull, 'set'=경로 등록, 'show'=현재 경로, 'unset'=등록 해제"
+description: "[WSL/Linux 전용] claude_toolkit 레포 git 자동화. ~/.claude/toolkit_dir 에 등록된 경로에서 동작 (어디서 호출하든 동일). 인자 없으면 stage+commit+push, 'pull'=pull, 'set'=경로 등록, 'show'=현재 경로, 'unset'=등록 해제. Windows에서는 /toolkit_sync 사용."
 allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 ---
 
-# /toolkit_git 명령
+# /toolkit_git 명령 — WSL / Linux / macOS 전용
 
 인자: $ARGUMENTS
+
+## 대상 OS
+
+본 명령은 POSIX 쉘 도구(`find`, `timeout`, `realpath`, `grep` 등)와 `~/.claude/toolkit_dir` 의 POSIX 절대 경로 표기를 전제로 한다. 동작 환경:
+
+- WSL (Windows Subsystem for Linux)
+- Linux
+- macOS
+
+Windows(Git Bash/MSYS/Cygwin 포함, WSL이 아닌 native Windows) 환경에서는 본 명령을 사용하지 말고, **`/toolkit_sync`** 로 파일 동기화와 push 를 한 번에 처리하거나 toolkit 원본 디렉토리에서 직접 `git` 을 호출한다. `/set_toolkit` 이 OS 를 감지해 호출한 프로젝트의 `.claude/commands/` 에서 본 파일을 자동으로 정리한다.
 
 ## 대상 디렉토리 (`$TOOLKIT_DIR`)
 
@@ -178,9 +188,24 @@ status:  <clean | N files changed>
 
 - 로드 절차로 `$TOOLKIT_DIR` 확정.
 - `git -C "$TOOLKIT_DIR" add -A` 로 모든 변경사항 스테이지.
+- **`.toolignore` 매칭 항목 unstage** (아래 절차 참조).
 - `git -C "$TOOLKIT_DIR" diff --cached --stat` 으로 스테이지 내용 확인.
 - 변경 없음 → `git -C "$TOOLKIT_DIR" push` 만 실행 (이미 커밋된 분이 원격에 없을 수 있음) 후 종료.
 - 변경 있음 → diff 분석해 한국어 1줄 커밋 메시지 자동 생성 → `git -C "$TOOLKIT_DIR" commit -m "<msg>"` → `git -C "$TOOLKIT_DIR" push` (upstream 없으면 `-u origin <branch>`).
+
+#### `.toolignore` unstage 절차
+
+호출 시점의 `$CLAUDE_PROJECT_DIR/.toolignore` (없으면 `$PWD/.toolignore`) 를 로드해, 매칭 패턴에 해당하는 staged 변경을 commit 직전에 unstage 한다. 매칭된 경로는 이번 commit 에 포함되지 않으며, working tree 의 modification 상태는 그대로 유지된다 (원본 레포에 그 변경이 남아있게 됨).
+
+- 파일 위치: `$CLAUDE_PROJECT_DIR/.toolignore` 우선, 없으면 `$PWD/.toolignore`. 둘 다 없으면 unstage 단계 skip.
+- 형식 (gitignore 단순화 버전): 한 줄에 한 패턴, `#` 주석, 빈 줄 무시. 끝이 `/` 면 디렉토리 prefix match, 그 외는 fnmatch glob. 매칭 기준은 `.claude/<rel>` 의 `<rel>` 부분.
+- 절차:
+  1. `git -C "$TOOLKIT_DIR" diff --cached --name-only` 로 staged 파일 목록 수집.
+  2. 각 파일 경로에서 `.claude/` 접두사를 떼어 `<rel>` 추출.
+  3. `<rel>` 이 `.toolignore` 패턴에 매칭되면 unstage 대상으로 표시.
+  4. unstage 대상을 한 번에 `git -C "$TOOLKIT_DIR" restore --staged -- <paths>` 또는 `git reset HEAD -- <paths>` 로 unstage.
+  5. 보고: `[.toolignore] <N>개 항목 unstage (commit 제외): <목록>`.
+- **삭제는 자동 수행 안 함** — 원본 레포에 이미 트래킹된 파일이 있고 그 파일이 .toolignore 에 새로 추가됐다 해도, 본 명령은 `git rm` 하지 않는다. 원본에서도 빼고 싶으면 사용자가 명시적으로 `$TOOLKIT_DIR` 에서 직접 `git rm` 후 commit.
 
 ### 5. `pull`
 
