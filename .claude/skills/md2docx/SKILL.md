@@ -12,15 +12,22 @@ description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진
 | 호출 | 동작 |
 |---|---|
 | `md2docx help` (또는 `-h`, `--help`, 인자 없음) | 사용법 출력 |
-| `md2docx <ref.docx>` | **매핑만** — `template/<원본>_mapped.docx` 생성 |
+| `md2docx <ref.docx>` | **매핑만** — `template/reference-<label>.docx` 생성 |
 | `md2docx <input.md>` | **template 선택 요청** — template/ 목록 출력, returncode=4. Claude 가 AskUserQuestion 으로 사용자에게 묻고 `--template <이름>` 으로 재실행 |
 | `md2docx <input.md> --template <이름>` | **template/ 에서 선택 후 변환** — 매핑 단계 스킵 |
-| `md2docx <input.md> <ref.docx>` | **매핑 + 변환** — `template/<ref>_mapped.docx` 생성 후 변환 |
+| `md2docx <input.md> <ref.docx>` | **매핑 + 변환** — `template/reference-<label>.docx` 생성 후 변환 |
 | `md2docx <input.md> <ref.docx> --verify` | 위 + XML/PDF 검증 |
 
 ### 산출물 위치 규칙
 
-**mapped reference 는 항상 skill 의 `template/` 폴더에 누적**된다 (재사용 가능한 pandoc reference 카탈로그). 이 덕분에 한 번 매핑한 회사 reference 는 이후 `--template <이름>` 한 줄로 재사용 가능.
+**mapped reference 는 항상 skill 의 `template/` 폴더에 `reference-<label>.docx` 명명으로 누적**된다 (재사용 가능한 pandoc reference 카탈로그).
+
+명명 규약 — `label` 은 원본 ref 의 stem 에서 `reference_` 또는 `reference-` 접두사를 제거한 값:
+- `reference_reg.docx` → `template/reference-reg.docx` (label=`reg`)
+- `reference-foo.docx` → `template/reference-foo.docx` (label=`foo`)
+- `company.docx` → `template/reference-company.docx` (label=`company`)
+
+`--template <이름>` 은 label(`reg`), 전체 stem(`reference-reg`), 파일명(`reference-reg.docx`) 모두 허용. 옛 규약 `reference_reg_mapped.docx` 도 호환 (있을 때만 폴백).
 
 `<input.md>` 가 주어지면 그 외 산출물은 **`<cwd>/<template_stem>/<md_stem>/` 폴더 안**에 생성된다:
 - `<input>.docx` — 변환 결과
