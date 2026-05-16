@@ -20,7 +20,9 @@
     "  - target_heading_level (promote 패턴 한정): 승격 대상 heading 레벨 (1~9). 지정 시 strip.py 는",
     "      --reference <mapped.docx> 가 주어지면 해당 reference 의 heading{N} 스타일에 numbering 이",
     "      실제 정의돼 있는지 확인하고, 없으면 이 패턴은 매칭에서 제외한다. 있으면 reason 에 실제",
-    "      lvlText 포맷('(1)', '%1.' 등) 을 주입해 사용자에게 표시한다."
+    "      lvlText 포맷('(1)', '%1.' 등) 을 주입해 사용자에게 표시한다.",
+    "  - passes: 단일 pattern/replace 대신 여러 패스를 순차 적용. 항목은 {pattern, replace, flags}",
+    "      형식. 한 사용자 질문(AskUserQuestion 1번) 안에 묶어 처리하고 싶을 때 사용."
   ],
   "patterns": [
     {
@@ -79,6 +81,29 @@
       "sample": {
         "before": "...본문\\n\\n---\\n\\n## 다음 섹션",
         "after": "...본문\\n\\n\\n## 다음 섹션"
+      }
+    },
+    {
+      "id": "remove-table-align-markers",
+      "kind": "remove",
+      "name": "마크다운 표 정렬 표기 (:---:, :---, ---:) 제거",
+      "description": "표 구분 줄에서 셀 정렬을 지정하는 ':' 만 제거하고 '---' 는 보존합니다 (표 구조 유지). 양쪽 ':' 모두 처리하기 위해 두 패스를 순차 적용.",
+      "reason": "표 셀 단락의 가운데/좌/우 정렬은 회사 reference 의 Table Grid 스타일이 결정합니다 (postprocess_tables.py 의 [POSTPROCESS-PJC] 단계). markdown 에 ':---:' 같은 표기를 두면 pandoc 이 셀 단락에 jc 를 직접 박아 reference 의 기본 정렬을 덮어쓰므로, 이 표기를 미리 제거하면 reference 정렬이 일관되게 적용됩니다. 표를 셀별로 다른 정렬로 두고 싶다면 유지하세요.",
+      "passes": [
+        {
+          "pattern": "(\\||^)([ \\t]*):(-{3,})",
+          "replace": "\\1\\2\\3",
+          "flags": "MULTILINE"
+        },
+        {
+          "pattern": "(-{3,}):([ \\t]*)(\\||$)",
+          "replace": "\\1\\2\\3",
+          "flags": "MULTILINE"
+        }
+      ],
+      "sample": {
+        "before": "|:---:|:---|---:|",
+        "after": "|---|---|---|"
       }
     }
   ]

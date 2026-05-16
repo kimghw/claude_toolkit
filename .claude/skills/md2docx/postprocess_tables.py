@@ -244,6 +244,60 @@ def remove_compact_in_tables(tbl_xml: str) -> str:
     return COMPACT_RE.sub('', tbl_xml)
 
 
+def extract_style_paragraph_jc(ref_styles_xml: str, style_name: str = "Table Grid"):
+    """reference 표 스타일의 기본 pPr 안 <w:jc/> 만 추출.
+
+    cnfStyle 별 분기 (tblStylePr 안의 pPr) 는 다루지 않는다 — 최상위 pPr 의 jc 만.
+    회사 reference 가 Table Grid 스타일에 `<w:pPr><w:jc w:val="center"/></w:pPr>` 같은
+    기본 정렬을 박아둔 경우 그것을 변환 docx 의 표 셀 단락에 반영하기 위함.
+
+    Returns: '<w:jc w:val="..."/>' 문자열 또는 None.
+    """
+    _, body = find_style_id_by_name(ref_styles_xml, style_name)
+    if not body:
+        return None
+    # tblStylePr (conditional) 안의 pPr 와 헷갈리지 않도록 — Table Grid 스타일 본문에서
+    # 첫 번째 (top-level) <w:pPr> 만 본다. tblStylePr 는 보통 pPr 보다 뒤에 등장하지만
+    # 순서 보장 없으므로 tblStylePr 블록 제거 후 검색.
+    body_no_cond = re.sub(r"<w:tblStylePr\b.*?</w:tblStylePr>", "", body, flags=re.DOTALL)
+    pr_m = re.search(r"<w:pPr>(.*?)</w:pPr>", body_no_cond, re.DOTALL)
+    if not pr_m:
+        return None
+    jc_m = re.search(r"<w:jc\b[^/>]*/>", pr_m.group(1))
+    return jc_m.group(0) if jc_m else None
+
+
+def inject_paragraph_jc_in_tables(tbl_xml: str, jc_xml: str) -> str:
+    """표 안 모든 <w:p> 에 대해, pPr 에 이미 <w:jc/> 가 있으면 유지, 없으면 추가.
+
+    markdown 표의 명시적 align(`:---:`, `:---`, `---:`) 으로 pandoc 이 박은 jc 는 그대로
+    존중한다. align 명시 없어서 jc 가 없는 단락에만 reference 의 jc 를 박는다.
+    """
+    if not jc_xml:
+        return tbl_xml
+
+    def patch_p(m):
+        open_tag = m.group(1)
+        body = m.group(2)
+        # pPr 본문 추출
+        ppr_m = re.search(r"<w:pPr>(.*?)</w:pPr>", body, re.DOTALL)
+        if ppr_m:
+            ppr_inner = ppr_m.group(1)
+            if re.search(r"<w:jc\b", ppr_inner):
+                return m.group(0)  # 이미 jc 존재 → markdown 명시 우선
+            new_ppr = f"<w:pPr>{ppr_inner}{jc_xml}</w:pPr>"
+            new_body = body[: ppr_m.start()] + new_ppr + body[ppr_m.end():]
+        else:
+            sm = PPR_SELFCLOSE_RE.search(body)
+            if sm:
+                new_body = body.replace(sm.group(0), f"<w:pPr>{jc_xml}</w:pPr>", 1)
+            else:
+                new_body = f"<w:pPr>{jc_xml}</w:pPr>" + body
+        return f"{open_tag}{new_body}</w:p>"
+
+    return P_RE.sub(patch_p, tbl_xml)
+
+
 def enforce_min_col_width(tbl_xml: str, min_twips: int = MIN_COL_TWIPS_DEFAULT) -> str:
     """tblGrid 의 gridCol 너비와 셀의 tcW(dxa) 너비를 모두 min_twips 이상으로 강제.
     docx 너비 단위는 twips (1/1440 inch); 1cm ≈ 567 twips."""
@@ -328,7 +382,8 @@ def clone_table_style(ref_styles_xml: str, target_styles_xml: str,
 
 
 def process_document_xml(doc_xml: str, ref_tblpr_inner: str = None,
-                         min_col_twips: int = MIN_COL_TWIPS_DEFAULT):
+                         min_col_twips: int = MIN_COL_TWIPS_DEFAULT,
+                         ref_paragraph_jc: str = None):
     """모든 <w:tbl> 에 대해 patch 적용.
 
     ref_tblpr_inner 가 주어지면 (reference 우선 모드):
@@ -337,6 +392,9 @@ def process_document_xml(doc_xml: str, ref_tblpr_inner: str = None,
         - pandoc 의 tblPr 은 유지하고 tblLook 만 04A0 으로 패치
 
     min_col_twips > 0 이면 모든 tblGrid 의 gridCol·tcW(dxa) 너비를 그 값 이상으로 강제.
+
+    ref_paragraph_jc 가 주어지면 표 안 단락 중 jc 없는 것에 그 값을 박는다.
+    (markdown 표의 명시적 align 으로 pandoc 이 박은 jc 는 그대로 유지)
     """
     count = 0
 
@@ -350,6 +408,8 @@ def process_document_xml(doc_xml: str, ref_tblpr_inner: str = None,
             tbl = patch_tblpr_look(tbl)
         tbl = patch_table_cnfstyle(tbl)
         tbl = remove_compact_in_tables(tbl)
+        if ref_paragraph_jc:
+            tbl = inject_paragraph_jc_in_tables(tbl, ref_paragraph_jc)
         tbl = enforce_min_col_width(tbl, min_twips=min_col_twips)
         return tbl
 
@@ -362,11 +422,15 @@ def postprocess(docx_in: Path, docx_out: Path,
                 ref_style_name: str = "Table Grid",
                 target_style_id: str = "Table",
                 min_col_twips: int = MIN_COL_TWIPS_DEFAULT) -> dict:
-    """Returns: {'tables': N, 'cloned_from': styleId or None, 'mode': 'reference'|'pandoc'}
+    """Returns: {'tables': N, 'cloned_from': styleId or None, 'mode': 'reference'|'pandoc',
+                 'paragraph_jc': '<w:jc .../>' or None}
 
     우선순위:
         - reference 에 표 스타일 + 표 패턴 있음 → 그것을 정답으로 사용 (pandoc tblPr 통째 교체)
         - 없으면 → pandoc 출력 유지하고 최소 patch (tblLook + cnfStyle) 만 적용
+
+    추가로 reference 표 스타일의 기본 pPr 안 jc(가운데/좌/우 정렬) 가 정의돼 있으면,
+    pandoc 이 jc 를 박지 않은 표 셀 단락에 그 값을 inline 으로 적용한다.
     """
     with zipfile.ZipFile(docx_in) as zin:
         names = zin.namelist()
@@ -375,6 +439,7 @@ def postprocess(docx_in: Path, docx_out: Path,
     # 1) reference 가 있으면 먼저 시도: 스타일 클론 + 표 tblPr 패턴 추출
     cloned_from = None
     ref_tblpr_inner = None
+    ref_paragraph_jc = None
     if reference is not None and reference.exists():
         try:
             with zipfile.ZipFile(reference) as zref:
@@ -400,16 +465,18 @@ def postprocess(docx_in: Path, docx_out: Path,
                     borders = extract_style_tblborders(ref_styles_xml, ref_style_name)
                     if borders:
                         ref_tblpr_inner = inline_inject_borders_in_tblpr(ref_tblpr_inner, borders)
+
+            # 표 스타일의 기본 단락 정렬 (jc) 추출
+            ref_paragraph_jc = extract_style_paragraph_jc(ref_styles_xml, ref_style_name)
         except (KeyError, FileNotFoundError):
             pass
 
     # 2) document.xml 패치
-    #    ref_tblpr_inner 있음 → reference 표 패턴으로 tblPr 통째 교체
-    #    없음 → pandoc tblPr 유지하고 tblLook 만 패치 (fallback)
-    #    + 모든 column 너비를 min_col_twips 이상으로 강제 (기본 1cm)
     doc_xml = contents['word/document.xml'].decode('utf-8')
     new_doc, n_tables = process_document_xml(
-        doc_xml, ref_tblpr_inner=ref_tblpr_inner, min_col_twips=min_col_twips,
+        doc_xml, ref_tblpr_inner=ref_tblpr_inner,
+        min_col_twips=min_col_twips,
+        ref_paragraph_jc=ref_paragraph_jc,
     )
 
     contents['word/document.xml'] = new_doc.encode('utf-8')
@@ -422,6 +489,7 @@ def postprocess(docx_in: Path, docx_out: Path,
         'tables': n_tables,
         'cloned_from': cloned_from,
         'mode': 'reference' if ref_tblpr_inner else 'pandoc',
+        'paragraph_jc': ref_paragraph_jc,
     }
 
 
@@ -506,6 +574,10 @@ def main():
         print(f"[POSTPROCESS-CLONE] '{args.ref_style_name}' (src styleId={info['cloned_from']}) → '{args.target_style_id}'  + 표 tblPr 패턴 교체")
     else:
         print(f"[POSTPROCESS-CLONE] 생략 (reference 표 스타일 없음 — pandoc 출력 유지, tblLook/cnfStyle 만 패치)")
+    if info.get('paragraph_jc'):
+        jc_val = re.search(r'w:val="([^"]+)"', info['paragraph_jc'])
+        val = jc_val.group(1) if jc_val else '?'
+        print(f"[POSTPROCESS-PJC] 표 셀 단락에 reference 의 jc='{val}' 적용 (markdown 명시 jc 는 유지)")
     if min_twips > 0:
         print(f"[POSTPROCESS-MINW] 모든 칼럼 너비 ≥ {args.min_col_cm}cm ({min_twips} twips) 강제")
     return 0

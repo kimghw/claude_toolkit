@@ -60,9 +60,9 @@ def load_patterns():
     return data.get("patterns", [])
 
 
-def compile_pattern(p):
+def _parse_flags(flag_str):
     flags = 0
-    for f in (p.get("flags") or "").split("|"):
+    for f in (flag_str or "").split("|"):
         f = f.strip().upper()
         if f == "MULTILINE":
             flags |= re.MULTILINE
@@ -70,7 +70,22 @@ def compile_pattern(p):
             flags |= re.IGNORECASE
         elif f == "DOTALL":
             flags |= re.DOTALL
-    return re.compile(p["pattern"], flags)
+    return flags
+
+
+def compile_pattern(p):
+    return re.compile(p["pattern"], _parse_flags(p.get("flags")))
+
+
+def get_passes(p):
+    """한 패턴 항목의 (regex, replace) 리스트 반환.
+    'passes' 배열이 있으면 그것을 사용, 없으면 단일 pattern/replace 로 single-pass."""
+    if "passes" in p:
+        return [
+            (re.compile(s["pattern"], _parse_flags(s.get("flags"))), s["replace"])
+            for s in p["passes"]
+        ]
+    return [(compile_pattern(p), p["replace"])]
 
 
 HEADING_NAME_RE = re.compile(r"^heading\s+([1-9])$", re.IGNORECASE)
@@ -162,6 +177,9 @@ def find_matches(text, patterns, heading_numbering=None):
     heading_numbering: {level: lvlText} 형태의 dict.
         promote 패턴이 target_heading_level 을 지정하면, 해당 레벨이 dict 에 없으면
         그 패턴은 결과에서 제외된다. 있으면 reason 에 실제 lvlText 가 주입된다.
+
+    'passes' 배열을 가진 항목은 모든 패스의 매칭 합계를 보고하고, sample 은
+    누적 적용 (앞 패스 결과를 다음 패스 입력으로) 결과를 보여준다.
     """
     results = []
     lines = text.split("\n")
@@ -169,24 +187,31 @@ def find_matches(text, patterns, heading_numbering=None):
         target_level = p.get("target_heading_level")
         if p.get("kind") == "promote" and target_level is not None and heading_numbering is not None:
             if target_level not in heading_numbering:
-                continue  # reference 에 해당 heading numbering 이 없으므로 묻지 않음
-
-        regex = compile_pattern(p)
-        matches = list(regex.finditer(text))
-        if not matches:
-            continue
-        samples = []
-        seen_lines = set()
-        for m in matches:
-            line_no = text.count("\n", 0, m.start()) + 1
-            if line_no in seen_lines:
                 continue
-            seen_lines.add(line_no)
-            line = lines[line_no - 1]
-            after = regex.sub(p["replace"], line)
-            samples.append({"line": line_no, "before": line, "after": after})
-            if len(samples) >= 5:
-                break
+
+        passes = get_passes(p)
+
+        total_count = 0
+        # 라인 단위 누적 sample 수집
+        affected_lines = {}  # {line_no: (before, after_after_all_passes)}
+        for regex, replace in passes:
+            for m in regex.finditer(text):
+                line_no = text.count("\n", 0, m.start()) + 1
+                total_count += 1
+                if line_no not in affected_lines:
+                    affected_lines[line_no] = lines[line_no - 1]
+
+        if total_count == 0:
+            continue
+
+        # 누적 sample 생성 (모든 passes 순차 적용 결과)
+        samples = []
+        for line_no in sorted(affected_lines)[:5]:
+            before = affected_lines[line_no]
+            after = before
+            for regex, replace in passes:
+                after = regex.sub(replace, after)
+            samples.append({"line": line_no, "before": before, "after": after})
 
         reason = p.get("reason", "")
         if (
@@ -207,14 +232,15 @@ def find_matches(text, patterns, heading_numbering=None):
             "description": p.get("description", ""),
             "reason": reason,
             "target_heading_level": target_level,
-            "count": len(matches),
+            "count": total_count,
             "samples": samples,
         })
     return results
 
 
 def apply_patterns(md_path, pattern_ids, patterns, out_path):
-    """원본 md_path 는 읽기 전용. 치환 결과는 out_path 로 저장."""
+    """원본 md_path 는 읽기 전용. 치환 결과는 out_path 로 저장.
+    'passes' 배열을 가진 항목은 모든 패스를 순차 적용한다."""
     text = md_path.read_text(encoding="utf-8")
     by_id = {p["id"]: p for p in patterns}
     applied = []
@@ -224,13 +250,11 @@ def apply_patterns(md_path, pattern_ids, patterns, out_path):
         if not p:
             unknown.append(pid)
             continue
-        regex = compile_pattern(p)
-        new_text, n = regex.subn(p["replace"], text)
-        if n > 0:
-            text = new_text
-            applied.append({"id": pid, "count": n})
-        else:
-            applied.append({"id": pid, "count": 0})
+        total = 0
+        for regex, replace in get_passes(p):
+            text, n = regex.subn(replace, text)
+            total += n
+        applied.append({"id": pid, "count": total})
 
     out_path.write_text(text, encoding="utf-8")
     return applied, unknown
