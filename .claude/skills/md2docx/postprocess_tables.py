@@ -466,7 +466,8 @@ def main():
             ref_path = Path(args.reference)
         else:
             here = Path(__file__).resolve().parent
-            for cand in (here / "references" / "reference_reg_mapped.docx",
+            for cand in (here / "template" / "reference_reg_mapped.docx",
+                         here / "references" / "reference_reg_mapped.docx",
                          here / "references" / "reference_reg.docx"):
                 if cand.exists():
                     ref_path = cand

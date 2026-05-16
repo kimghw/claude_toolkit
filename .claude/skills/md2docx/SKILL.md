@@ -1,6 +1,6 @@
 ---
 name: md2docx
-description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진입점 md2docx.py가 인자(파일 확장자)로 자동 분기 — docx만 주면 매핑만 수행해 <원본>_mapped.docx 저장, md+docx 주면 매핑 후 회사 양식으로 변환. --verify로 XML/PDF 검증. 회사 reference와 Pandoc 어휘 불일치(heading 1 vs Heading 1, Quote vs Block Text 등)는 SEMANTIC_HINTS/STUB_DEFINITIONS로 자동 매핑.
+description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진입점 md2docx.py가 인자(파일 확장자)로 자동 분기 — docx만 주면 매핑만 수행해 template/<원본>_mapped.docx 로 저장, md+docx 주면 매핑 후 변환, md 만 주면 template/ 목록 출력 후 사용자 선택. --verify로 XML/PDF 검증. 회사 reference와 Pandoc 어휘 불일치(heading 1 vs Heading 1, Quote vs Block Text 등)는 SEMANTIC_HINTS/STUB_DEFINITIONS로 자동 매핑.
 ---
 
 # md2docx — Markdown → DOCX 통합 파이프라인
@@ -12,14 +12,31 @@ description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진
 | 호출 | 동작 |
 |---|---|
 | `md2docx help` (또는 `-h`, `--help`, 인자 없음) | 사용법 출력 |
-| `md2docx <ref.docx>` | **매핑만** — `<원본>_mapped.docx` 생성 |
-| `md2docx <input.md> <ref.docx>` | **매핑 + 변환** — `<input>.docx` 생성 |
+| `md2docx <ref.docx>` | **매핑만** — `template/<원본>_mapped.docx` 생성 |
+| `md2docx <input.md>` | **template 선택 요청** — template/ 목록 출력, returncode=4. Claude 가 AskUserQuestion 으로 사용자에게 묻고 `--template <이름>` 으로 재실행 |
+| `md2docx <input.md> --template <이름>` | **template/ 에서 선택 후 변환** — 매핑 단계 스킵 |
+| `md2docx <input.md> <ref.docx>` | **매핑 + 변환** — `template/<ref>_mapped.docx` 생성 후 변환 |
 | `md2docx <input.md> <ref.docx> --verify` | 위 + XML/PDF 검증 |
+
+### 산출물 위치 규칙
+
+**mapped reference 는 항상 skill 의 `template/` 폴더에 누적**된다 (재사용 가능한 pandoc reference 카탈로그). 이 덕분에 한 번 매핑한 회사 reference 는 이후 `--template <이름>` 한 줄로 재사용 가능.
+
+`<input.md>` 가 주어지면 그 외 산출물은 **`<cwd>/<template_stem>/<md_stem>/` 폴더 안**에 생성된다:
+- `<input>.docx` — 변환 결과
+- `<input>_stripped.md` — strip 패턴 적용 사본 (`--apply-strip` 시)
+- `_mapping-report.md` — 매핑 분석 리포트
+- `verify_out/` — `--verify` 시 검증 산출물
+
+예: `report.md` 를 `reference_reg` template 으로 변환하면 `<cwd>/reference_reg/report/` 폴더가 생성되고 그 안에 위 파일들이 떨어진다. `template_stem` 은 매핑된 reference 의 stem 에서 `_mapped` 접미사를 뺀 값. 같은 cwd 에서 여러 template × 여러 md 변환을 섞어 돌려도 산출물이 폴더로 격리된다. 입력 md 는 어디에 있어도 원본은 보존된다.
+
+매핑-only 모드(`md` 없이 `ref.docx` 만)에선 `<ref>_mapped.docx` 와 `_mapping-report.md` 가 함께 `template/` 안에 떨어진다.
 
 옵션:
 
 | 플래그 | 설명 |
 |---|---|
+| `--template <이름>` | `template/` 폴더의 매핑된 reference 를 선택. stem(`reference_reg`), `_mapped` 포함 stem, 또는 전체 파일명 모두 허용. `<ref.docx>` 와 동시 지정 불가 |
 | `--verify` | verify.py 호출해 XML + PDF 비교 |
 | `--skip-lint` | markdown lint(넘버링/heading 사전 검토) 건너뛰기 |
 | `--skip-strip` | 패턴 검출(`references/strip_patterns.json`) 단계 건너뛰기 (모두 유지) |
@@ -29,6 +46,25 @@ description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진
 | `--out <file>` | 변환 결과 경로 덮어쓰기 |
 
 `<ref.docx>` 이름이 이미 `_mapped`로 끝나면 매핑 단계 자동 생략.
+
+### Template 선택 흐름 (returncode=4)
+
+`md` 만 주어지고 `--template` 도 없으면 `md2docx.py` 는 `template/*.docx` 목록을 다음 형식으로 stdout 에 출력하고 returncode=4 로 종료한다:
+
+```
+[TEMPLATE-LIST] 사용 가능한 template 목록:
+[TEMPLATE-OPTION] reference_reg_mapped.docx
+[TEMPLATE-OPTION] other_company_mapped.docx
+```
+
+**Claude 의 처리 절차** — returncode=4 면:
+
+1. `AskUserQuestion` 으로 사용자에게 묻는다: "변환에 사용할 회사 template 을 골라주세요." 옵션은 `[TEMPLATE-OPTION]` 줄의 파일명들.
+2. 사용자가 선택한 stem 으로 재실행:
+   ```
+   python md2docx.py <input.md> --template <선택된_이름>
+   ```
+3. `template/` 가 비어 있으면 (`ERROR: template/ 폴더가 비어 있습니다.`) 사용자에게 `<ref.docx>` 위치를 묻고 `md2docx <ref.docx>` 로 먼저 매핑하도록 안내.
 
 ---
 
@@ -48,20 +84,24 @@ description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진
 # 사용법
 python .claude\skills\md2docx\md2docx.py help
 
-# 새 회사 양식 받았을 때 — 매핑만
+# 새 회사 양식 받았을 때 — 매핑만 (template/ 에 누적)
 python .claude\skills\md2docx\md2docx.py company.docx
-# → company_mapped.docx 생성
+# → .claude\skills\md2docx\template\company_mapped.docx 생성
 
-# 일상 변환 — md를 회사 양식 docx로
+# 일상 변환 — template 선택 (Claude 가 사용자에게 묻고 --template 으로 재실행)
+python .claude\skills\md2docx\md2docx.py report.md
+# → template/ 목록 출력 + returncode=4
+
+# 일상 변환 — 명시적 template 지정
+python .claude\skills\md2docx\md2docx.py report.md --template reference_reg
+# → template/reference_reg_mapped.docx 로 report.docx 생성
+
+# 일상 변환 — ref.docx 직접 지정 (매핑부터 새로 수행)
 python .claude\skills\md2docx\md2docx.py report.md company.docx
-# → report.docx 생성 (회사 양식 적용)
+# → template/company_mapped.docx 생성 후 report.docx 변환
 
 # 변환 + 시각 검증
-python .claude\skills\md2docx\md2docx.py report.md company.docx --verify
-
-# 매핑된 파일 직접 지정 (1회 매핑 후 반복 변환에 효율적)
-python .claude\skills\md2docx\md2docx.py report.md company_mapped.docx
-# → 매핑 단계 자동 스킵, 변환만 수행
+python .claude\skills\md2docx\md2docx.py report.md --template reference_reg --verify
 ```
 
 ---
@@ -248,11 +288,13 @@ reference 의 마지막 `<w:sectPr>` 에서 `<w:pgSz>`, `<w:pgMar>`, `<w:cols>`,
 [입력] <ref.docx> (필수) + <input.md> (선택) + --verify (선택)
    ↓
 [자동 분기]
-   ├─ docx만:   매핑만 수행 → <원본>_mapped.docx
-   ├─ md+docx:  매핑 + 변환 → <input>.docx
-   └─ +--verify: 위 + 두 PDF 비교
+   ├─ docx만:           매핑만 수행 → template/<원본>_mapped.docx
+   ├─ md만:             template/ 목록 출력, returncode=4 (사용자 선택 필요)
+   ├─ md + --template:  template/ 의 mapped reference 로 변환 (매핑 스킵)
+   ├─ md + docx:        매핑 + 변환 → template/<ref>_mapped.docx, <input>.docx
+   └─ +--verify:        위 + 두 PDF 비교
    ↓
-[출력] _mapped.docx (Pandoc reference) + (옵션) 변환 docx + (옵션) verify_out/
+[출력] template/<ref>_mapped.docx + (옵션) <input>.docx + (옵션) verify_out/
 ```
 
 ---
@@ -285,5 +327,6 @@ reference 의 마지막 `<w:sectPr>` 에서 `<w:pgSz>`, `<w:pgMar>`, `<w:cols>`,
 - [`verify.py`](./verify.py) — 변환·XML·PDF 검증
 - [`decisions.md`](./decisions.md) — 자동 매핑 결정 규칙 기록
 - [`references/pandoc-docx-styles.md`](./references/pandoc-docx-styles.md) — Pandoc 인식 스타일 목록
-- [`references/reference_reg.docx`](./references/reference_reg.docx) — 원본 회사 템플릿
-- [`references/reference_reg_mapped.docx`](./references/reference_reg_mapped.docx) — 매핑 적용된 reference
+- [`references/reference_reg.docx`](./references/reference_reg.docx) — 원본 회사 템플릿 (raw)
+- [`template/`](./template/) — `_mapped.docx` (pandoc `--reference-doc` 카탈로그) 누적 보관 폴더. `--template <이름>` 으로 선택, 매핑 모드(`md2docx <ref.docx>`) 시 새 항목 추가됨
+- [`template/reference_reg_mapped.docx`](./template/reference_reg_mapped.docx) — `reference_reg.docx` 매핑 결과
