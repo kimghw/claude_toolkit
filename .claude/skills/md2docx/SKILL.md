@@ -199,6 +199,15 @@ pandoc 변환 직전, `lint.py` 가 markdown 원본의 모호한 넘버링/headi
 | `remove` | reference 자동 서식과 중복되는 수동 표기 제거 | "제거" vs "유지" |
 | `promote` | bullet/ordered list 마커를 heading 으로 승격해 reference heading 자동 번호 적용 | "heading 으로 승격" vs "마커 유지" |
 
+**Reference-aware 필터링** — `md2docx.py` 는 strip.py 를 호출할 때 `--reference <mapped.docx>` 를 함께 넘긴다. `promote-*` 패턴은 `target_heading_level` 필드를 가지며, strip.py 가 reference 의 styles.xml + numbering.xml 을 파싱해 해당 heading 레벨에 numbering 이 **실제로** 정의돼 있는지 확인한다:
+
+- 정의 있음 → 매칭 보고. `reason` 끝에 실제 `lvlText` 포맷(예: `'(1)'`, `'%1.'`)이 주입돼 사용자에게 표시된다.
+- 정의 없음 → 그 promote 패턴은 매칭에서 자동 제외 (잘못된 질문 방지).
+
+stdout 신호:
+- `[STRIP-HEADING-NUM] reference 의 heading numbering: h5='1.', h6='(%1)'` — reference 에서 발견한 heading numbering 요약.
+- `[STRIP-HEADING-NUM] reference 의 heading 스타일에 numbering 정의 없음 (promote 패턴 자동 제외됨)` — heading 에 numbering 이 전혀 없을 때.
+
 **현재 카탈로그**
 
 | id | kind | 정규식 → 치환 | 효과 (reference_reg 기준) |
@@ -273,7 +282,22 @@ reference 의 마지막 `<w:sectPr>` 에서 `<w:pgSz>`, `<w:pgMar>`, `<w:cols>`,
   python postprocess_page.py <docx> --reference <ref.docx>
   ```
 
-### 단계 5: 검증 (`verify.py` — `--verify` 시)
+### 단계 5: 리스트 단락 속성 강제 적용 (`postprocess_lists.py`)
+
+bullet/머릿기호를 **유지**하기로 한 단락 (= pandoc 이 `<w:numPr>` 를 박은 단락) 에 대해, reference 의 list paragraph 스타일에서 들여쓰기 · 줄간격 · 정렬 · 폰트(rPr) 를 추출해 단락에 **direct formatting 으로** 강제 적용한다. pandoc 이 박는 자체 들여쓰기/폰트가 reference 의 디자인을 무시하는 문제를 막는다.
+
+- 대상 단락 식별 기준: **`<w:pPr>` 안에 `<w:numPr>` 가 있는 모든 단락** — bullet (`-`, `*`, `+`) 과 ordered list (`1.`, `1)`) 둘 다 pandoc 이 numPr 로 만들기 때문에 자동으로 양쪽 다 커버된다. 단계 1.7 에서 promote 한 단락은 heading 이 되어 numPr 가 없으므로 영향받지 않는다.
+- reference 에서 사용할 스타일 후보 (우선순위): `List Paragraph` → `ListParagraph` → `List Bullet` → `List Number`.
+- 추출 항목: `<w:ind/>`, `<w:spacing/>`, `<w:jc/>` 그리고 `<w:rPr>...</w:rPr>` 전체 (있는 것만).
+- 적용 규칙: 단락의 pPr 에 같은 태그가 있으면 reference 값으로 교체, 없으면 추가. rPr 도 동일 규칙으로 교체/추가.
+- 로그: `[POSTPROCESS-LISTS]`
+- 비활성화: `md2docx.py --no-postprocess` 로 통합 비활성 (단계 3·4 와 함께 꺼짐).
+- 단독 호출도 가능:
+  ```
+  python postprocess_lists.py <docx> --reference <ref.docx>
+  ```
+
+### 단계 6: 검증 (`verify.py` — `--verify` 시)
 
 매핑 적용/미적용 두 변환의:
 - XML 레벨: `<w:pStyle>`, `<w:rStyle>`, `<w:tblStyle>` 참조가 styles.xml에 정의됐는지
@@ -324,6 +348,7 @@ reference 의 마지막 `<w:sectPr>` 에서 `<w:pgSz>`, `<w:pgMar>`, `<w:cols>`,
 - [`references/strip_patterns.json`](./references/strip_patterns.json) — 누적 관리되는 정규식 패턴 카탈로그
 - [`postprocess_tables.py`](./postprocess_tables.py) — pandoc 출력 docx 의 표 디자인 후처리 (tblLook + cnfStyle)
 - [`postprocess_page.py`](./postprocess_page.py) — reference 의 페이지 여백(pgSz/pgMar/cols/docGrid) 을 모든 sectPr 에 동기화
+- [`postprocess_lists.py`](./postprocess_lists.py) — bullet/머릿기호 단락(numPr) 에 reference 의 list paragraph ind/spacing/jc/rPr 강제 적용
 - [`verify.py`](./verify.py) — 변환·XML·PDF 검증
 - [`decisions.md`](./decisions.md) — 자동 매핑 결정 규칙 기록
 - [`references/pandoc-docx-styles.md`](./references/pandoc-docx-styles.md) — Pandoc 인식 스타일 목록

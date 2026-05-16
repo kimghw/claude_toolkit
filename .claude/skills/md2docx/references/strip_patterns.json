@@ -16,7 +16,11 @@
     "  - replace: 치환 문자열. 백레퍼런스는 \\\\1, \\\\2",
     "  - flags: 'MULTILINE' | 'IGNORECASE' | 'DOTALL' 을 '|' 로 결합",
     "  - reason: AskUserQuestion 에서 사용자가 보고 판단할 근거 (회사 reference 의 어떤 자동 서식이 적용되는지)",
-    "  - sample: 매칭 예시 (사람이 보고 패턴 의도 확인)"
+    "  - sample: 매칭 예시 (사람이 보고 패턴 의도 확인)",
+    "  - target_heading_level (promote 패턴 한정): 승격 대상 heading 레벨 (1~9). 지정 시 strip.py 는",
+    "      --reference <mapped.docx> 가 주어지면 해당 reference 의 heading{N} 스타일에 numbering 이",
+    "      실제 정의돼 있는지 확인하고, 없으면 이 패턴은 매칭에서 제외한다. 있으면 reason 에 실제",
+    "      lvlText 포맷('(1)', '%1.' 등) 을 주입해 사용자에게 표시한다."
   ],
   "patterns": [
     {
@@ -36,9 +40,10 @@
     {
       "id": "promote-top-bullets-to-h6",
       "kind": "promote",
-      "name": "최상위 bullet (- * +) → heading 6 ('(1)(2)(3)' 자동 번호)",
-      "description": "들여쓰기 없는 최상위 bullet 마커를 heading 6 으로 승격합니다. 회사 양식의 h6 자동 번호 '(N)' 이 적용됩니다.",
-      "reason": "reference_reg.docx 의 heading 6 스타일은 '(1), (2), (3)' 자동 번호 매김을 가집니다. bullet 을 유지하면 pandoc 기본 bullet(•) 으로 표시되고, h6 으로 승격하면 회사 양식의 '(1)' 표기가 자동 적용됩니다. 단순 항목 나열로 두려면 유지하세요.",
+      "target_heading_level": 6,
+      "name": "최상위 bullet (- * +) → heading 6 (자동 번호 상속)",
+      "description": "들여쓰기 없는 최상위 bullet 마커를 heading 6 으로 승격합니다. reference 의 h6 자동 번호가 적용됩니다.",
+      "reason": "reference 의 heading 6 스타일에 numbering 이 정의돼 있으면 그 형식이 적용됩니다 (예: '(1)(2)(3)'). bullet 을 유지하면 pandoc 기본 bullet(•) 으로 표시되고, h6 으로 승격하면 회사 양식의 번호 표기가 자동 적용됩니다. 단순 항목 나열로 두려면 유지하세요. --reference 가 주어지면 실제 lvlText 포맷이 함께 표시됩니다.",
       "pattern": "^(- |\\* |\\+ )",
       "replace": "###### ",
       "flags": "MULTILINE",
@@ -50,9 +55,10 @@
     {
       "id": "promote-top-ordered-to-h5",
       "kind": "promote",
-      "name": "최상위 ordered list (1./2./3., 1)/2)/3)) → heading 5 ('1.' 자동 번호)",
-      "description": "들여쓰기 없는 최상위 ordered list 항목을 heading 5 로 승격합니다. 회사 양식의 h5 자동 번호 'N.' 이 적용됩니다.",
-      "reason": "reference_reg.docx 의 heading 5 스타일은 '1., 2., 3.' 자동 번호 매김을 가집니다. ordered list 를 그대로 두면 pandoc 기본 list 형식으로, h5 로 승격하면 회사 양식의 번호/정렬이 적용됩니다. 본문 흐름의 일부로 두려면 유지하세요.",
+      "target_heading_level": 5,
+      "name": "최상위 ordered list (1./2./3., 1)/2)/3)) → heading 5 (자동 번호 상속)",
+      "description": "들여쓰기 없는 최상위 ordered list 항목을 heading 5 로 승격합니다. reference 의 h5 자동 번호가 적용됩니다.",
+      "reason": "reference 의 heading 5 스타일에 numbering 이 정의돼 있으면 그 형식이 적용됩니다 (예: '1., 2., 3.'). ordered list 를 그대로 두면 pandoc 기본 list 형식으로, h5 로 승격하면 회사 양식의 번호/정렬이 적용됩니다. 본문 흐름의 일부로 두려면 유지하세요. --reference 가 주어지면 실제 lvlText 포맷이 함께 표시됩니다.",
       "pattern": "^(\\d+)[.)]\\s+",
       "replace": "##### ",
       "flags": "MULTILINE",

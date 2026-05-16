@@ -379,7 +379,7 @@ def main():
         print()
         print(f"[1.7/?] 패턴 검출: {md.name}")
         strip_result = subprocess.run(
-            [sys.executable, str(here / "strip.py"), str(md)],
+            [sys.executable, str(here / "strip.py"), str(md), "--reference", str(mapped)],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             env=_subenv(),
         )
@@ -455,6 +455,23 @@ def main():
         if pp_page_result.returncode != 0:
             print(pp_page_result.stderr, file=sys.stderr)
             print(f"      [POSTPROCESS-PAGE-WARN] returncode={pp_page_result.returncode} — 변환 결과는 유지")
+
+    # === Step 2.7: bullet/머릿기호 단락 (numPr) 에 reference 의 list paragraph 속성 적용 ===
+    if "--no-postprocess" not in flags:
+        print()
+        print(f"[2.7/?] 리스트 단락 post-processing: {out.name}")
+        pp_list_result = subprocess.run(
+            [sys.executable, str(here / "postprocess_lists.py"), str(out),
+             "--reference", str(mapped)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=_subenv(),
+        )
+        for line in pp_list_result.stdout.splitlines():
+            if line.startswith("[POSTPROCESS-LISTS"):
+                print(f"      {line}")
+        if pp_list_result.returncode != 0:
+            print(pp_list_result.stderr, file=sys.stderr)
+            print(f"      [POSTPROCESS-LISTS-WARN] returncode={pp_list_result.returncode} — 변환 결과는 유지")
 
     # === Step 3: verify (옵션) ===
     if "--verify" in flags:
