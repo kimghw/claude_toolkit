@@ -57,7 +57,14 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
    - 일치 → 그대로 사용하고 탐색 스킵.
    - 불일치/파일 없음 → 환경변수 무효로 간주. `"CLAUDE_TOOLKIT_ROOT이 유효하지 않음 — 재탐색합니다"` 고지 후 다음 단계로 폴백.
 
-2. **파일명 기반 탐색 (느린 경로)** — **WSL · Windows 양측 루트를 모두 포함**한다:
+2. **`~/.claude/toolkit_dir` 빠른 경로** — `/toolkit_git` 스킬이 관리하는 경로 캐시 파일을 활용:
+   - `~/.claude/toolkit_dir` 파일이 존재하면 그 첫 줄을 후보 경로로 읽는다 (`HINT="$(head -n1 ~/.claude/toolkit_dir 2>/dev/null | tr -d '\r\n')"`).
+   - **반드시 ID 검증**: `grep -q "$CLAUDE_TOOLKIT_ROOT_ID" "$HINT/.project_id" 2>/dev/null`.
+   - 일치 + `$HINT/.claude/` 존재 → 즉시 확정, 다음 단계 스킵.
+   - 불일치/파일 없음 → `"~/.claude/toolkit_dir 의 경로가 유효하지 않음 — 재탐색합니다"` 고지 후 폴백.
+   - **이유**: 같은 머신에서 `/toolkit_git` 가 이미 등록해 둔 경로가 있다면 `find` 로 다시 뒤질 필요 없이 곧장 채택할 수 있어, Windows `/c` 전역 스캔으로 인한 `timeout` 124 사고를 회피한다.
+
+3. **파일명 기반 탐색 (느린 경로)** — **WSL · Windows 양측 루트를 모두 포함**한다:
    - 현재 OS 감지:
      ```
      UNAME="$(uname -s 2>/dev/null || echo unknown)"
@@ -103,12 +110,12 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
         ```
      스킬은 `git config` 를 자동 수정하지 않는다. 안내만 제공하며, 우회 명령은 사용자가 직접 수행해야 한다.
 
-3. **매칭 개수별 분기**:
+4. **매칭 개수별 분기**:
    - **정확히 1개**: 그 파일의 부모 디렉토리를 `$CLAUDE_TOOLKIT_ROOT`으로 확정.
    - **2개 이상**: **`AskUserQuestion`으로 사용자에게 선택을 묻는다**. 각 후보를 `<경로>  (HEAD <shortsha>)` 형식으로 선택지로 제시. 후보가 4개를 넘으면 상위 3개 + `그 외 직접 입력` 옵션으로 구성하고 본문에 전체 목록을 나열한다.
    - **0개**: 에러 고지 후 `AskUserQuestion`(자유 텍스트 입력)으로 `$CLAUDE_TOOLKIT_ROOT` 경로 직접 지정 요청. 입력받은 경로 역시 `.project_id`의 ID가 일치해야 수용, 불일치면 재질의.
 
-4. **확정 후 사후 처리**:
+5. **확정 후 사후 처리**:
    - 보고: `CLAUDE_TOOLKIT_ROOT = <경로>  (HEAD <shortsha>, <clean|dirty>)`.
    - `$CLAUDE_TOOLKIT_ROOT` 환경변수가 미설정이거나 확정 경로와 다르면, 쉘 rc에 다음을 추가하도록 **안내만** 한다(자동 수정 금지):
      ```
