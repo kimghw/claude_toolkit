@@ -1,6 +1,6 @@
 ---
 name: md2docx
-description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진입점 md2docx.py가 인자(파일 확장자)로 자동 분기 — docx만 주면 매핑만 수행해 template/<원본>_mapped.docx 로 저장, md+docx 주면 매핑 후 변환, md 만 주면 template/ 목록 출력 후 사용자 선택. --verify로 XML/PDF 검증. 회사 reference와 Pandoc 어휘 불일치(heading 1 vs Heading 1, Quote vs Block Text 등)는 SEMANTIC_HINTS/STUB_DEFINITIONS로 자동 매핑.
+description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진입점 md2docx.py가 인자(파일 확장자)로 자동 분기 — docx만 주면 매핑만 수행해 template/<원본>_mapped.docx 로 저장, md+docx 주면 매핑 후 변환, md 만 주면 template/ 목록 출력 후 사용자 선택. --verify로 XML/PDF 검증. 회사 reference와 Pandoc 어휘 불일치(heading 1 vs Heading 1, Quote vs Block Text 등)는 SEMANTIC_HINTS/STUB_DEFINITIONS로 자동 매핑. reference 의 pseudo-list(□/◌/-/①/(1)/가. + 수동 들여쓰기) 패턴은 두 파일로 분리 관리: (1) template/userlist-<label>.json = per-reference cluster 카탈로그 (userlist_extract.py 가 표준 스타일 단락 관찰 + LLM induction + 사용자 확인 후 Claude 가 작성), (2) <output_dir>/userlist-mapping.json = per-conversion list_kind→cluster_id 매핑 (userlist_scan_lists.py 가 pandoc 출력 numPr 리스트를 (numFmt,ilvl) 별로 dump + 사용자 확인 후 Claude 가 작성). 후자가 존재하면 다음 변환 시 reuse/fresh 를 사용자에게 묻는다. postprocess_userlist.py 가 두 파일을 함께 받아 변환 결과의 numPr 리스트를 해당 cluster 패턴으로 재작성.
 ---
 
 # md2docx — Markdown → DOCX 통합 파이프라인
@@ -12,10 +12,12 @@ description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진
 | 호출 | 동작 |
 |---|---|
 | `md2docx help` (또는 `-h`, `--help`, 인자 없음) | 사용법 출력 |
-| `md2docx <ref.docx>` | **매핑만** — `template/reference-<label>.docx` 생성 |
+| `md2docx template <ref.docx>` | **reference 추출(매핑)만** — `template/reference-<label>.docx` 생성 |
+| `md2docx <ref.docx>` | (하위 호환) 위와 동일 — 매핑만 |
 | `md2docx <input.md>` | **template 선택 요청** — template/ 목록 출력, returncode=4. Claude 가 AskUserQuestion 으로 사용자에게 묻고 `--template <이름>` 으로 재실행 |
 | `md2docx <input.md> --template <이름>` | **template/ 에서 선택 후 변환** — 매핑 단계 스킵 |
-| `md2docx <input.md> <ref.docx>` | **매핑 + 변환** — `template/reference-<label>.docx` 생성 후 변환 |
+| `md2docx <input.md> <ref.docx>` | **[기본] 자동 cached/fresh** — `template/reference-<label>.docx` 와 `<output_dir>/userlist-mapping.json` 이 **둘 다** 존재하면 cached (lint/strip/userlist 질문 자동 스킵, 매핑도 스킵). 캐시가 없으면 fresh (매핑부터 모든 사용자 선택 진행) |
+| `md2docx renew <input.md> <ref.docx>` | **모든 사용자 선택 재진행** — 캐시 무시, 매핑·lint·strip·userlist 질문 모두 다시 묻는다 |
 | `md2docx <input.md> <ref.docx> --verify` | 위 + XML/PDF 검증 |
 
 ### 산출물 위치 규칙
@@ -50,6 +52,10 @@ description: Markdown(.md)을 회사 양식의 Word(.docx)로 변환. 단일 진
 | `--apply-strip <pid1,pid2,...>` | 선택된 패턴을 원본에 적용(원본은 보존, `<md_stem>_stripped.md` 생성)한 뒤 그것을 입력으로 변환 |
 | `--no-postprocess` | 변환 후 표 디자인 + 페이지 레이아웃 post-processing 모두 건너뛰기 (기본은 활성) |
 | `--min-col-cm <N>` | (postprocess 옵션) 모든 표 칼럼/셀(dxa) 너비를 이 값(cm) 이상으로 강제 — 기본 1.0, `0` 으로 끄기 |
+| `--skip-userlist` | 사용자 정의 리스트 관찰·스캔·매핑 단계 모두 건너뛴다 (이미 만들어진 mapping 이 있으면 후처리 적용은 유지) |
+| `--no-userlist` | 관찰·스캔·매핑·후처리 적용 모두 비활성 — 이번 변환 한정 |
+| `--reuse-userlist-mapping` | `<output_dir>/userlist-mapping.json` 이 존재할 때 묻지 않고 재사용 |
+| `--fresh-userlist-mapping` | `<output_dir>/userlist-mapping.json` 삭제 후 새로 스캔/매핑 진행 |
 | `--out <file>` | 변환 결과 경로 덮어쓰기 |
 
 `<ref.docx>` 이름이 이미 `_mapped`로 끝나면 매핑 단계 자동 생략.
@@ -159,6 +165,78 @@ python .claude\skills\md2docx\md2docx.py report.md --template reference_reg --ve
 3. 응답이 **아니오** 또는 사용자가 numbering 무시를 선호하면 그대로 변환 진행.
 
 이 확인은 **새 reference.docx로 매핑할 때마다 1회** 묻는다. 결과는 작업 메모리에 유지하고 동일 reference 반복 사용 시 재질문하지 않는다.
+
+### 단계 1.55: 사용자 정의 리스트 패턴 관찰 — LLM 패턴 도출 + 사용자 확인 필요
+
+회사 reference 안에 **`<w:numPr>` 없이** 수동으로 마커(`□`, `◌`, `-`, `①`, `(1)`, `가.`, 또는 처음 보는 임의 글리프)와 들여쓰기만으로 만들어진 "pseudo-list" 단락이 있는 경우, pandoc 의 `--reference-doc` 만으로는 그 모양을 재현할 수 없다 (pandoc 은 markdown `-`/`1.` 을 항상 진짜 numPr 리스트로 변환).
+
+**설계 원칙 — 마커 enum 하드코딩 금지**:
+Python(`userlist_extract.py`) 은 단지 **관찰자** 역할만 한다. 표준 스타일(Normal/표준/본문) + numPr 없음 단락의 머릿글·들여쓰기·폰트·문단 정보를 raw 로 dump 한다. 어떤 글리프가 리스트 마커인지 / 같은 들여쓰기·폰트끼리 cluster 로 묶을지 / 어떤 cluster 가 prose 인지 같은 모든 판정은 **Claude(LLM) 가 observations 를 보고 직접 induction** 한다. 이 방식은 처음 보는 마커(예: `□`/`◌`/`▶` 등 무엇이든) 도 자동으로 잡아낸다.
+
+**관찰 도구** — `userlist_extract.py`
+
+```
+python userlist_extract.py <reference.docx> --out <observations.json>
+```
+
+- **cluster dedup**: 같은 (정규화 머릿글 + 들여쓰기 + 폰트 + pStyle + sz) 단락들은 한 cluster 로 압축. 머릿글 정규화 규칙 — 숫자 연쇄→`N`, 라틴 연쇄→`A`, 한글 음절 연쇄→`H` (예: `1.`/`12.`→`N.`, `(1)`→`(N)`, `가.`/`가나.`→`H.`). enclosed alphanumeric(`①②③`)은 정규식에 안 잡혀 별도 cluster 로 남음 — LLM 이 dump 보고 사후 묶음.
+- 출력 JSON: `{reference, label, observations: [...]}`. 각 cluster 는 `idx`(첫 등장), `pStyle`, `head_token`, `head_chars`, `head_normalized`, `text`, `alt_samples`, `sample_count`, `sample_indices`, `indent`, `spacing`, `jc`, `rPr`, `pPr_xml`, `rPr_xml`.
+- stdout: `[USERLIST-OBS] cluster='<normalized>' | count=<n> | first_idx=<i> | indices=[…] | ind=left=<x>,hanging=<y> | font='<font>' <sz>pt | pStyle='<style>' | text='<sample>' | alt=[…]` + `[USERLIST-OBS-COUNT] clusters=<m> samples=<n>` + `[USERLIST-OUT] <abs path>`.
+- returncode: cluster 0건 = 0, 1건 이상 = 5.
+
+**저장 위치 — 두 파일로 관심사 분리**:
+
+| 파일 | 위치 | 역할 | 작성 시점 |
+|---|---|---|---|
+| `template/userlist-<label>.json` | skill | **per-reference cluster 카탈로그** — 어떤 cluster 정의들이 있는지 (id/marker_sequence/indent/spacing/jc/rPr/pPr_xml/rPr_xml). `apply_to` 같은 매핑 결정 없음 | 처음 변환 시 단계 1.55, Claude 가 observations 보고 induction + 사용자 확인 후 Write |
+| `<cwd>/<template_stem>/<md_stem>/userlist-mapping.json` | per-conversion | **list_kind→cluster_id 매핑** — pandoc 결과의 `(numFmt, ilvl)` 별로 어떤 cluster 를 적용할지 | 단계 2.85, Claude 가 pandoc 스캔 결과 + catalog 보고 사용자 확인 후 Write |
+
+**md2docx.py 단계 1.55** — `<input.md>` 가 함께 주어졌을 때만 동작. 분기:
+
+1. `--no-userlist` 또는 `--skip-userlist` → 모두 건너뜀.
+2. catalog 가 없으면 → `userlist_extract.py` 실행 → returncode=5 시 사용자 확인 배너 + `sys.exit(5)`.
+3. catalog + mapping 둘 다 존재 → reuse/fresh 분기:
+   - `--reuse-userlist-mapping` → 그대로 사용 (단계 2.86 에서 적용).
+   - `--fresh-userlist-mapping` → mapping 삭제, 단계 2.85 에서 다시 스캔.
+   - 둘 다 없으면 → `[USERLIST-MAPPING-EXISTS]` + 배너 + `sys.exit(6)`.
+4. catalog 만 존재 → 단계 2.85 에서 첫 스캔/매핑 수행.
+
+**Claude 의 처리 절차 — 단계 1.55 (catalog 작성, returncode=5 시):**
+
+1. `[USERLIST-OBS]` 줄들을 **직접 보고 induction**:
+   - 머릿글 식별 — `head` 필드의 첫 1~3 글자가 무엇인지 (`□`, `◌`, `-`, `①`, `(1)`, `가.`, 또는 임의 글리프).
+   - 같은 머릿글 + 같은 들여쓰기(`indent`) + 같은 폰트(`rFonts_ascii`/`rFonts_eastAsia`) 끼리 묶어 cluster 구성.
+   - 단발 일회성 강조(`sample_count` 가 1) 나 prose/표 셀로 보이는 cluster 는 제외.
+2. 적용 결정 매핑 없이 **cluster 정의만** `template/userlist-<label>.json` 에 Write:
+
+   ```json
+   {
+     "reference": "reference-reg.docx",
+     "label": "reg",
+     "clusters": [
+       {
+         "id": "userlist-□-firstLine440",
+         "head_normalized": "□",
+         "marker_sequence": ["□"],
+         "indent": {"left": null, "hanging": null, "firstLine": "440"},
+         "spacing": null,
+         "jc": null,
+         "rPr": {"rFonts_ascii": "Arial Unicode MS", "sz": null},
+         "pPr_xml": "<w:pPr>...</w:pPr>",
+         "rPr_xml": "<w:rPr>...</w:rPr>"
+       }
+     ]
+   }
+   ```
+3. `pPr_xml` / `rPr_xml` 은 `_userlist-<label>-observations.json` 의 해당 cluster 의 raw XML 그대로 복사. `marker_sequence` 는 bullet 형이면 `[글리프]` 하나, ordered 형이면 확장 시퀀스(예: `["①","②",...]`).
+4. 작성 후 동일 명령으로 재실행 → catalog 발견 → 단계 1.55 catalog 작성 단계는 자동 스킵, 단계 2.85 에서 mapping 작성으로 진행.
+
+**Claude 의 처리 절차 — 단계 1.55 (mapping 존재, returncode=6 시):**
+
+`AskUserQuestion` 으로 사용자에게 다음 셋 중 하나 묻기:
+- **재사용** — `--reuse-userlist-mapping` 추가 후 재실행
+- **새로 분석** — `--fresh-userlist-mapping` 추가 후 재실행 (mapping 삭제 + 단계 2.85 재스캔)
+- **이번만 비활성** — `--no-userlist` 추가 후 재실행
 
 ### 단계 1.6: Markdown lint — 넘버링/heading 사전 검토 (사용자 확인 필요)
 
@@ -308,6 +386,60 @@ bullet/머릿기호를 **유지**하기로 한 단락 (= pandoc 이 `<w:numPr>` 
   python postprocess_lists.py <docx> --reference <ref.docx>
   ```
 
+### 단계 5.4: pandoc 출력 list_kind 스캔 (`userlist_scan_lists.py`)
+
+`template/userlist-<label>.json` (cluster catalog) 이 존재하고 `<output_dir>/userlist-mapping.json` 이 아직 없으면, 변환 직후 pandoc 출력 docx 의 모든 numPr 단락을 `(numFmt, ilvl)` 단위로 묶어 dump 한다.
+
+```
+python userlist_scan_lists.py <output.docx> --out <scan.json>
+```
+
+- 출력 JSON: `{list_kinds: [{numFmt, ilvl, kind, count, sample_text, alt_samples, numIds}]}`.
+- stdout: `[USERLIST-PANDOC-LIST] numFmt=<f> ilvl=<l> | kind=<unordered|ordered> | count=<n> | sample='<t>' | alt=[...] | numIds=[...]` + `[USERLIST-PANDOC-LIST-COUNT] kinds=<m>` + `[USERLIST-SCAN-OUT] <abs>`.
+- returncode: list_kind 0건 = 0, 1건 이상 = 7.
+
+returncode=7 시 md2docx.py 가 사용자 확인 배너 출력 후 `sys.exit(7)`. **Claude 의 처리 절차**:
+
+1. catalog 의 cluster 정의들과 위 `[USERLIST-PANDOC-LIST]` list_kind 들을 함께 보여주며, 각 list_kind 마다 `AskUserQuestion` 으로 묻기:
+   - 옵션: catalog 의 각 `cluster_id` (예: `userlist-□-firstLine440`) + `사용 안 함`
+2. 답을 모아 `<output_dir>/userlist-mapping.json` 작성:
+
+   ```json
+   {
+     "md": "report.md",
+     "reference_label": "reg",
+     "list_rules": [
+       {"match": {"numFmt": "bullet", "ilvl": "0"}, "cluster_id": "userlist-□-firstLine440"},
+       {"match": {"numFmt": "bullet", "ilvl": "1"}, "cluster_id": "userlist-◌-firstLine660"},
+       {"match": {"numFmt": "decimal", "ilvl": "0"}, "cluster_id": null}
+     ]
+   }
+   ```
+3. 같은 명령으로 재실행 → mapping 발견 → 단계 5.4 스킵, 단계 5.5 후처리 진행.
+
+### 단계 5.5: 사용자 정의 리스트 cluster 적용 (`postprocess_userlist.py`)
+
+catalog + mapping 둘 다 존재하면, 변환 결과 docx 의 numPr 리스트 단락을 mapping 의 list_rule 에 따라 catalog 의 해당 cluster 패턴으로 재작성한다.
+
+```
+python postprocess_userlist.py <output.docx> --catalog <catalog.json> --mapping <mapping.json>
+```
+
+- 입력:
+  - `--catalog`: `template/userlist-<label>.json` (per-reference cluster 정의)
+  - `--mapping`: `<output_dir>/userlist-mapping.json` (per-conversion list_kind→cluster_id)
+- 처리: 단락의 `(numFmt, ilvl)` 로 mapping 의 list_rule 조회 → cluster_id 로 catalog 의 cluster 조회 → numPr 제거, marker run prepend, indent/spacing/jc/rPr 적용. cluster_id=null 인 list_kind 는 그대로 둠 (pandoc 기본 유지).
+- 로그: `[POSTPROCESS-USERLIST]`
+- 비활성화:
+  - `md2docx.py --no-userlist` → 단계 1.55/5.4/5.5 모두 비활성.
+  - `md2docx.py --no-postprocess` → 표/페이지/리스트 후처리와 함께 비활성.
+- 단독 호출:
+  ```
+  python postprocess_userlist.py <docx> --catalog template/userlist-<label>.json --mapping <output_dir>/userlist-mapping.json
+  ```
+
+`--skip-userlist` 는 단계 1.55/5.4 의 사용자 질문 단계만 건너뛰고, mapping 이 이미 있다면 본 단계 적용은 **유지** 된다.
+
 ### 단계 6: 검증 (`verify.py` — `--verify` 시)
 
 매핑 적용/미적용 두 변환의:
@@ -360,6 +492,12 @@ bullet/머릿기호를 **유지**하기로 한 단락 (= pandoc 이 `<w:numPr>` 
 - [`postprocess_tables.py`](./postprocess_tables.py) — pandoc 출력 docx 의 표 디자인 후처리 (tblLook + cnfStyle)
 - [`postprocess_page.py`](./postprocess_page.py) — reference 의 페이지 여백(pgSz/pgMar/cols/docGrid) 을 모든 sectPr 에 동기화
 - [`postprocess_lists.py`](./postprocess_lists.py) — bullet/머릿기호 단락(numPr) 에 reference 의 list paragraph ind/spacing/jc/rPr 강제 적용
+- [`.env`](./.env) — 단계별 동작 토글 (`<단계>_APPLY_<속성>` 규약). 현재 `USERLIST_APPLY_RPR/INDENT/SPACING/JC`. 토글이 `false` 면 cluster 의 해당 속성 무시하고 단락 기존 값 유지 (예: `USERLIST_APPLY_RPR=false` → 폰트 본문 바탕글 유지)
+- [`userlist_extract.py`](./userlist_extract.py) — reference 의 표준 스타일 단락 머릿글을 raw 로 cluster dedup 관찰 → `template/_userlist-<label>-observations.json` (단계 1.55, 마커 판정은 LLM 사후)
+- [`userlist_scan_lists.py`](./userlist_scan_lists.py) — pandoc 출력 docx 의 numPr 리스트를 `(numFmt, ilvl)` 별로 dump → `<output_dir>/_userlist-pandoc-scan.json` (단계 5.4, list_kind 별 cluster 매핑 결정용)
+- [`postprocess_userlist.py`](./postprocess_userlist.py) — `--catalog` + `--mapping` 둘을 함께 받아 변환 결과 docx 의 numPr 리스트를 cluster 패턴으로 재작성 (단계 5.5)
+- [`template/userlist-<label>.json`](./template/) — per-reference cluster 카탈로그 (정의만). Claude 가 observations induction + 사용자 확인 후 Write
+- `<output_dir>/userlist-mapping.json` — per-conversion list_kind→cluster_id 매핑. Claude 가 pandoc 스캔 결과 + catalog 보고 사용자 확인 후 Write. 다음 변환 시 `--reuse-userlist-mapping` / `--fresh-userlist-mapping` 으로 재사용/재분석 결정
 - [`verify.py`](./verify.py) — 변환·XML·PDF 검증
 - [`decisions.md`](./decisions.md) — 자동 매핑 결정 규칙 기록
 - [`references/pandoc-docx-styles.md`](./references/pandoc-docx-styles.md) — Pandoc 인식 스타일 목록

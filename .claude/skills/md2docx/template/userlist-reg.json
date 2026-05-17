@@ -1,0 +1,72 @@
+{
+  "reference": "reference-reg.docx",
+  "label": "reg",
+  "clusters": [
+    {
+      "id": "userlist-□-l0",
+      "head_normalized": "□",
+      "marker_sequence": ["□"],
+      "first_observed_marker": "□",
+      "sample_text": "□ Claude는 Anthropic이 개발한 대화형 AI로...",
+      "sample_count": 3,
+      "indent": {"left": "220", "hanging": "220", "firstLine": null, "right": null},
+      "spacing": {"line": null, "lineRule": null, "before": null, "after": "160"},
+      "jc": null,
+      "rPr": {
+        "rFonts_ascii": "Arial Unicode MS",
+        "rFonts_hAnsi": "Arial Unicode MS",
+        "rFonts_eastAsia": "Arial Unicode MS",
+        "sz": "22",
+        "color": null,
+        "b": false,
+        "i": false
+      },
+      "pPr_xml": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:spacing w:after=\"160\" /><w:ind w:left=\"220\" w:hangingChars=\"100\" w:hanging=\"220\" /></w:pPr>",
+      "rPr_xml": "<w:rPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:sz w:val=\"22\" /><w:szCs w:val=\"24\" /><w:rFonts w:ascii=\"Arial Unicode MS\" w:eastAsia=\"Arial Unicode MS\" w:hAnsi=\"Arial Unicode MS\" w:cs=\"Arial Unicode MS\" w:hint=\"eastAsia\" /></w:rPr>"
+    },
+    {
+      "id": "userlist-◌-l1",
+      "head_normalized": "◌",
+      "marker_sequence": ["◌"],
+      "first_observed_marker": "◌",
+      "sample_text": "◌ 컨텍스트 엔지니어링은 AI가 더 정확하고...",
+      "sample_count": 1,
+      "indent": {"left": "440", "hanging": "220", "firstLine": null, "right": null},
+      "spacing": {"line": null, "lineRule": null, "before": null, "after": "160"},
+      "jc": null,
+      "rPr": {
+        "rFonts_ascii": null,
+        "rFonts_hAnsi": null,
+        "rFonts_eastAsia": null,
+        "sz": "22",
+        "color": null,
+        "b": false,
+        "i": false
+      },
+      "pPr_xml": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:spacing w:after=\"160\" /><w:ind w:leftChars=\"100\" w:left=\"440\" w:hangingChars=\"100\" w:hanging=\"220\" /></w:pPr>",
+      "rPr_xml": "<w:rPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:sz w:val=\"22\" /><w:szCs w:val=\"24\" /><w:rFonts w:asciiTheme=\"minorEastAsia\" w:hAnsiTheme=\"minorEastAsia\" w:hint=\"eastAsia\" /></w:rPr>"
+    },
+    {
+      "id": "userlist-dash-l2",
+      "head_normalized": "-",
+      "marker_sequence": ["-"],
+      "first_observed_marker": "-",
+      "sample_text": "- 하네스 엔지니어링은 전기·전자 장비에...",
+      "sample_count": 2,
+      "indent": {"left": "660", "hanging": "220", "firstLine": null, "right": null},
+      "spacing": {"line": null, "lineRule": null, "before": null, "after": "160"},
+      "jc": null,
+      "rPr": {
+        "rFonts_ascii": null,
+        "rFonts_hAnsi": null,
+        "rFonts_eastAsia": null,
+        "sz": "22",
+        "color": null,
+        "b": false,
+        "i": false
+      },
+      "pPr_xml": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:spacing w:after=\"160\" /><w:ind w:leftChars=\"200\" w:left=\"660\" w:hangingChars=\"100\" w:hanging=\"220\" /></w:pPr>",
+      "rPr_xml": "<w:rPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:sz w:val=\"22\" /><w:szCs w:val=\"24\" /><w:rFonts w:hint=\"eastAsia\" /></w:rPr>"
+    }
+  ]
+}

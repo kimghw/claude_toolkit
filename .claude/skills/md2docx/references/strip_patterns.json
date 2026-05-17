@@ -84,6 +84,20 @@
       }
     },
     {
+      "id": "remove-inline-code-backticks",
+      "kind": "remove",
+      "name": "Inline code 백틱 제거 (`text` → text)",
+      "description": "한 줄 내 backtick 으로 감싸진 inline code 표기를 평문화합니다. 코드 펜스(``` ... ```) 안의 본문은 자체적으로 영향 안 받습니다.",
+      "reason": "Markdown 의 `text` 가 pandoc 으로 변환되면 VerbatimChar/SourceCode 스타일이 적용되어 docx 에서 monospace 폰트 + 회색 글자 바탕색(shading)으로 표시됩니다. 회사 양식의 본문(바탕글)으로 통일하려면 md 단계에서 backtick 을 제거해 그냥 평문으로 두는 것이 가장 직접적입니다. 변수명·함수명을 그대로 코드체로 강조하고 싶다면 유지하세요.",
+      "pattern": "`([^`\\n]+)`",
+      "replace": "\\1",
+      "flags": "",
+      "sample": {
+        "before": "`$TOOLKIT` 의 경로는 `claude_toolkit` 입니다.",
+        "after": "$TOOLKIT 의 경로는 claude_toolkit 입니다."
+      }
+    },
+    {
       "id": "remove-table-align-markers",
       "kind": "remove",
       "name": "마크다운 표 정렬 표기 (:---:, :---, ---:) 제거",

@@ -1,0 +1,255 @@
+{
+  "reference": "reference_reg.docx",
+  "label": "reg",
+  "observations": [
+    {
+      "idx": 8,
+      "pStyle": null,
+      "head_token": "전주",
+      "head_chars": "전주",
+      "head_normalized": "H",
+      "text": "전주",
+      "alt_samples": [
+        "광주",
+        "대구",
+        "경주"
+      ],
+      "sample_count": 19,
+      "sample_indices": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "indent": null,
+      "spacing": {
+        "line": null,
+        "lineRule": null,
+        "before": null,
+        "after": "160"
+      },
+      "jc": null,
+      "rPr": {
+        "rFonts_ascii": null,
+        "rFonts_hAnsi": null,
+        "rFonts_eastAsia": null,
+        "sz": "22",
+        "color": null,
+        "b": false,
+        "i": false
+      },
+      "pPr_xml_direct": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:cnfStyle w:val=\"100000000000\" w:firstRow=\"1\" w:lastRow=\"0\" w:firstColumn=\"0\" w:lastColumn=\"0\" w:oddVBand=\"0\" w:evenVBand=\"0\" w:oddHBand=\"0\" w:evenHBand=\"0\" w:firstRowFirstColumn=\"0\" w:firstRowLastColumn=\"0\" w:lastRowFirstColumn=\"0\" w:lastRowLastColumn=\"0\" /></w:pPr>",
+      "rPr_xml_direct": "<w:rPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:rFonts w:hint=\"eastAsia\" /></w:rPr>",
+      "pPr_xml": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:spacing w:after=\"160\" /><w:widowControl w:val=\"0\" /><w:wordWrap w:val=\"0\" /><w:autoSpaceDE w:val=\"0\" /><w:autoSpaceDN w:val=\"0\" /><w:cnfStyle w:val=\"100000000000\" w:firstRow=\"1\" w:lastRow=\"0\" w:firstColumn=\"0\" w:lastColumn=\"0\" w:oddVBand=\"0\" w:evenVBand=\"0\" w:oddHBand=\"0\" w:evenHBand=\"0\" w:firstRowFirstColumn=\"0\" w:firstRowLastColumn=\"0\" w:lastRowFirstColumn=\"0\" w:lastRowLastColumn=\"0\" /></w:pPr>",
+      "rPr_xml": "<w:rPr xmlns:ns1=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:kern w:val=\"2\" /><w:sz w:val=\"22\" /><w:szCs w:val=\"24\" /><w:lang w:val=\"en-US\" w:eastAsia=\"ko-KR\" w:bidi=\"ar-SA\" /><ns1:ligatures ns1:val=\"standardContextual\" /><w:rFonts w:hint=\"eastAsia\" /></w:rPr>"
+    },
+    {
+      "idx": 28,
+      "pStyle": null,
+      "head_token": "□",
+      "head_chars": "□ Claude",
+      "head_normalized": "□",
+      "text": "□ Claude는 Anthropic이 개발한 대화형 AI로, 문서 작성·요약·분석·코드 작성 등 다양한 업무를 지원합니다.",
+      "alt_samples": [
+        "□ 자연스러운 대화와 긴 문맥 이해에 강점이 있어 업무 생산성과 협업 효율을 높이는 데 유용합니다.",
+        "□ 단순히 질문만 던지는 것이 아니라 AI가 상황을 제대로 이해하도록 문맥을 설계하는 방법입니다."
+      ],
+      "sample_count": 3,
+      "sample_indices": [
+        28,
+        29,
+        33
+      ],
+      "indent": {
+        "left": "220",
+        "hanging": "220",
+        "firstLine": null,
+        "right": null
+      },
+      "spacing": {
+        "line": null,
+        "lineRule": null,
+        "before": null,
+        "after": "160"
+      },
+      "jc": null,
+      "rPr": {
+        "rFonts_ascii": "Arial Unicode MS",
+        "rFonts_hAnsi": "Arial Unicode MS",
+        "rFonts_eastAsia": "Arial Unicode MS",
+        "sz": "22",
+        "color": null,
+        "b": false,
+        "i": false
+      },
+      "pPr_xml_direct": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:ind w:left=\"220\" w:hangingChars=\"100\" w:hanging=\"220\" /><w:rPr><w:rFonts w:hint=\"eastAsia\" /></w:rPr></w:pPr>",
+      "rPr_xml_direct": "<w:rPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:rFonts w:ascii=\"Arial Unicode MS\" w:eastAsia=\"Arial Unicode MS\" w:hAnsi=\"Arial Unicode MS\" w:cs=\"Arial Unicode MS\" w:hint=\"eastAsia\" /></w:rPr>",
+      "pPr_xml": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:spacing w:after=\"160\" /><w:widowControl w:val=\"0\" /><w:wordWrap w:val=\"0\" /><w:autoSpaceDE w:val=\"0\" /><w:autoSpaceDN w:val=\"0\" /><w:ind w:left=\"220\" w:hangingChars=\"100\" w:hanging=\"220\" /><w:rPr><w:rFonts w:hint=\"eastAsia\" /></w:rPr></w:pPr>",
+      "rPr_xml": "<w:rPr xmlns:ns1=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:kern w:val=\"2\" /><w:sz w:val=\"22\" /><w:szCs w:val=\"24\" /><w:lang w:val=\"en-US\" w:eastAsia=\"ko-KR\" w:bidi=\"ar-SA\" /><ns1:ligatures ns1:val=\"standardContextual\" /><w:rFonts w:ascii=\"Arial Unicode MS\" w:eastAsia=\"Arial Unicode MS\" w:hAnsi=\"Arial Unicode MS\" w:cs=\"Arial Unicode MS\" w:hint=\"eastAsia\" /></w:rPr>"
+    },
+    {
+      "idx": 30,
+      "pStyle": null,
+      "head_token": "◌",
+      "head_chars": "◌ 컨텍스트 엔",
+      "head_normalized": "◌",
+      "text": "◌ 컨텍스트 엔지니어링은 AI가 더 정확하고 유용한 답을 하도록, 필요한 배경정보·지시사항·예시·데이터를 구조적으로 설계하고 제공하는 작업입니다.",
+      "alt_samples": [],
+      "sample_count": 1,
+      "sample_indices": [
+        30
+      ],
+      "indent": {
+        "left": "440",
+        "hanging": "220",
+        "firstLine": null,
+        "right": null
+      },
+      "spacing": {
+        "line": null,
+        "lineRule": null,
+        "before": null,
+        "after": "160"
+      },
+      "jc": null,
+      "rPr": {
+        "rFonts_ascii": null,
+        "rFonts_hAnsi": null,
+        "rFonts_eastAsia": null,
+        "sz": "22",
+        "color": null,
+        "b": false,
+        "i": false
+      },
+      "pPr_xml_direct": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:ind w:leftChars=\"100\" w:left=\"440\" w:hangingChars=\"100\" w:hanging=\"220\" /><w:rPr><w:rFonts w:asciiTheme=\"minorEastAsia\" w:hAnsiTheme=\"minorEastAsia\" w:hint=\"eastAsia\" /></w:rPr></w:pPr>",
+      "rPr_xml_direct": "<w:rPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:rFonts w:asciiTheme=\"minorEastAsia\" w:hAnsiTheme=\"minorEastAsia\" w:hint=\"eastAsia\" /></w:rPr>",
+      "pPr_xml": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:spacing w:after=\"160\" /><w:widowControl w:val=\"0\" /><w:wordWrap w:val=\"0\" /><w:autoSpaceDE w:val=\"0\" /><w:autoSpaceDN w:val=\"0\" /><w:ind w:leftChars=\"100\" w:left=\"440\" w:hangingChars=\"100\" w:hanging=\"220\" /><w:rPr><w:rFonts w:asciiTheme=\"minorEastAsia\" w:hAnsiTheme=\"minorEastAsia\" w:hint=\"eastAsia\" /></w:rPr></w:pPr>",
+      "rPr_xml": "<w:rPr xmlns:ns1=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:kern w:val=\"2\" /><w:sz w:val=\"22\" /><w:szCs w:val=\"24\" /><w:lang w:val=\"en-US\" w:eastAsia=\"ko-KR\" w:bidi=\"ar-SA\" /><ns1:ligatures ns1:val=\"standardContextual\" /><w:rFonts w:asciiTheme=\"minorEastAsia\" w:hAnsiTheme=\"minorEastAsia\" w:hint=\"eastAsia\" /></w:rPr>"
+    },
+    {
+      "idx": 31,
+      "pStyle": null,
+      "head_token": "-",
+      "head_chars": "- 하네스 엔지",
+      "head_normalized": "-",
+      "text": "- 하네스 엔지니어링은 전기·전자 장비에 전력과 신호를 안정적으로 전달하기 위해 전선, 커넥터, 단자, 보호재 등을 체계적으로 설계하는 기술입니다.",
+      "alt_samples": [
+        "- 쉽게 말하면, 자동차·항공기·선박·산업장비 안에서 여러 부품을 정확하게 연결하는 배선 시스템 설계라고 보면 됩니다"
+      ],
+      "sample_count": 2,
+      "sample_indices": [
+        31,
+        32
+      ],
+      "indent": {
+        "left": "660",
+        "hanging": "220",
+        "firstLine": null,
+        "right": null
+      },
+      "spacing": {
+        "line": null,
+        "lineRule": null,
+        "before": null,
+        "after": "160"
+      },
+      "jc": null,
+      "rPr": {
+        "rFonts_ascii": null,
+        "rFonts_hAnsi": null,
+        "rFonts_eastAsia": null,
+        "sz": "22",
+        "color": null,
+        "b": false,
+        "i": false
+      },
+      "pPr_xml_direct": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:ind w:leftChars=\"200\" w:left=\"660\" w:hangingChars=\"100\" w:hanging=\"220\" /><w:rPr><w:rFonts w:hint=\"eastAsia\" /></w:rPr></w:pPr>",
+      "rPr_xml_direct": "<w:rPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:rFonts w:hint=\"eastAsia\" /></w:rPr>",
+      "pPr_xml": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:spacing w:after=\"160\" /><w:widowControl w:val=\"0\" /><w:wordWrap w:val=\"0\" /><w:autoSpaceDE w:val=\"0\" /><w:autoSpaceDN w:val=\"0\" /><w:ind w:leftChars=\"200\" w:left=\"660\" w:hangingChars=\"100\" w:hanging=\"220\" /><w:rPr><w:rFonts w:hint=\"eastAsia\" /></w:rPr></w:pPr>",
+      "rPr_xml": "<w:rPr xmlns:ns1=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:kern w:val=\"2\" /><w:sz w:val=\"22\" /><w:szCs w:val=\"24\" /><w:lang w:val=\"en-US\" w:eastAsia=\"ko-KR\" w:bidi=\"ar-SA\" /><ns1:ligatures ns1:val=\"standardContextual\" /><w:rFonts w:hint=\"eastAsia\" /></w:rPr>"
+    },
+    {
+      "idx": 34,
+      "pStyle": null,
+      "head_token": "◌",
+      "head_chars": "◌ AI가 무엇",
+      "head_normalized": "◌",
+      "text": "◌ AI가 무엇을 해야 하는지 명확히 지정",
+      "alt_samples": [],
+      "sample_count": 1,
+      "sample_indices": [
+        34
+      ],
+      "indent": {
+        "left": null,
+        "hanging": null,
+        "firstLine": "220",
+        "right": null
+      },
+      "spacing": {
+        "line": null,
+        "lineRule": null,
+        "before": null,
+        "after": "160"
+      },
+      "jc": null,
+      "rPr": {
+        "rFonts_ascii": null,
+        "rFonts_hAnsi": null,
+        "rFonts_eastAsia": null,
+        "sz": "22",
+        "color": null,
+        "b": false,
+        "i": false
+      },
+      "pPr_xml_direct": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:ind w:firstLineChars=\"100\" w:firstLine=\"220\" /></w:pPr>",
+      "rPr_xml_direct": "<w:rPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:rFonts w:asciiTheme=\"minorEastAsia\" w:hAnsiTheme=\"minorEastAsia\" w:hint=\"eastAsia\" /></w:rPr>",
+      "pPr_xml": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:spacing w:after=\"160\" /><w:widowControl w:val=\"0\" /><w:wordWrap w:val=\"0\" /><w:autoSpaceDE w:val=\"0\" /><w:autoSpaceDN w:val=\"0\" /><w:ind w:firstLineChars=\"100\" w:firstLine=\"220\" /></w:pPr>",
+      "rPr_xml": "<w:rPr xmlns:ns1=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:kern w:val=\"2\" /><w:sz w:val=\"22\" /><w:szCs w:val=\"24\" /><w:lang w:val=\"en-US\" w:eastAsia=\"ko-KR\" w:bidi=\"ar-SA\" /><ns1:ligatures ns1:val=\"standardContextual\" /><w:rFonts w:asciiTheme=\"minorEastAsia\" w:hAnsiTheme=\"minorEastAsia\" w:hint=\"eastAsia\" /></w:rPr>"
+    },
+    {
+      "idx": 35,
+      "pStyle": null,
+      "head_token": "-",
+      "head_chars": "- Claude",
+      "head_normalized": "-",
+      "text": "- Claude 활용 관점에서 보면, 컨텍스트 엔지니어링은 Claude가 일을 잘하도록 필요한 정보를 미리 정리해서 넣어주는 방식입니다.",
+      "alt_samples": [
+        "- 즉, 질문만 주는 것이 아니라 목적, 배경, 참고자료, 원하는 출력 형식, 제약조건까지 함께 제공해 Claude의 답변 품질을 높이는 실무 기법입니다."
+      ],
+      "sample_count": 2,
+      "sample_indices": [
+        35,
+        36
+      ],
+      "indent": {
+        "left": "519",
+        "hanging": "220",
+        "firstLine": null,
+        "right": null
+      },
+      "spacing": {
+        "line": null,
+        "lineRule": null,
+        "before": null,
+        "after": "160"
+      },
+      "jc": null,
+      "rPr": {
+        "rFonts_ascii": null,
+        "rFonts_hAnsi": null,
+        "rFonts_eastAsia": null,
+        "sz": "22",
+        "color": null,
+        "b": false,
+        "i": false
+      },
+      "pPr_xml_direct": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:ind w:leftChars=\"136\" w:left=\"519\" w:hangingChars=\"100\" w:hanging=\"220\" /></w:pPr>",
+      "rPr_xml_direct": "<w:rPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:rFonts w:hint=\"eastAsia\" /></w:rPr>",
+      "pPr_xml": "<w:pPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:spacing w:after=\"160\" /><w:widowControl w:val=\"0\" /><w:wordWrap w:val=\"0\" /><w:autoSpaceDE w:val=\"0\" /><w:autoSpaceDN w:val=\"0\" /><w:ind w:leftChars=\"136\" w:left=\"519\" w:hangingChars=\"100\" w:hanging=\"220\" /></w:pPr>",
+      "rPr_xml": "<w:rPr xmlns:ns1=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:kern w:val=\"2\" /><w:sz w:val=\"22\" /><w:szCs w:val=\"24\" /><w:lang w:val=\"en-US\" w:eastAsia=\"ko-KR\" w:bidi=\"ar-SA\" /><ns1:ligatures ns1:val=\"standardContextual\" /><w:rFonts w:hint=\"eastAsia\" /></w:rPr>"
+    }
+  ]
+}
