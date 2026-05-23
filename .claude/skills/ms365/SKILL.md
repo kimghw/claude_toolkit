@@ -5,15 +5,15 @@ description: KR_MS365_mcp 통합 셋업·운영 스킬. 6개 MS365 MCP 서버(ou
 
 # MS365 MCP 통합 셋업·운영 스킬
 
-이 스킬은 **`/ms365`**로 호출. 셋업(venv/.env/등록)과 서버 운영(start/stop/status)을 한 곳에서 처리합니다.
+`/ms365`로 호출. 셋업(venv/.env/등록)과 서버 운영(start/stop/status)을 한 곳에서 처리합니다.
 
-## 인증은 MCP 서버가 자동 처리 — 이 스킬이 하지 않습니다
+## 인증은 MCP 서버가 자동 처리
 
-OAuth 브라우저 플로우, refresh_token 갱신, 콜백 서버, `auth.db` 저장은 [`session/auth_manager.py`](../../../session/auth_manager.py)와 MCP 서버가 자체 처리합니다. 이 스킬이 책임지는 건 단 하나 — Azure 자격증명(`CLIENT_ID/SECRET/TENANT_ID`)을 `.env`에 깔아두는 것 + 서버 프로세스 띄우기.
+OAuth 브라우저 플로우, refresh_token 갱신, 콜백 서버, `auth.db` 저장은 [`session/auth_manager.py`](../../../session/auth_manager.py)와 MCP 서버가 자체 처리합니다. 이 스킬의 책임은 단 둘 — Azure 자격증명(`CLIENT_ID/SECRET/TENANT_ID`)을 `.env`에 깔아두는 것 + 서버 프로세스 띄우기.
 
 ## 지원 서버 (6개)
 
-| 서버 | HTTP 포트 | STDIO 진입점 (Desktop) | HTTP 진입점 (Code) |
+| 서버 | HTTP 포트 | STDIO (Desktop) | HTTP (Code) |
 |---|---|---|---|
 | `outlook` | 5001 | `mcp_outlook/mcp_server/server_stdio.py` | `mcp_outlook/mcp_server/server_stream.py` |
 | `calendar` | 5002 | `mcp_calendar/mcp_server/server_stdio.py` | `mcp_calendar/mcp_server/server_stream.py` |
@@ -22,43 +22,36 @@ OAuth 브라우저 플로우, refresh_token 갱신, 콜백 서버, `auth.db` 저
 | `onenote` | 5005 | `mcp_onenote/mcp_server/server_stdio.py` | `mcp_onenote/mcp_server/server_stream.py` |
 | `todo` | 5006 | `mcp_todo/mcp_server/server_stdio.py` | `mcp_todo/mcp_server/server_stream.py` |
 
-모든 서버는 `.env`와 `database/auth.db`를 **공유**합니다 — 1회 인증으로 6개 다 사용 가능.
+콜백은 5000 고정. 모든 서버는 `.env`와 `database/auth.db`를 공유 — 1회 인증으로 6개 다 사용.
 
-## 모드
-
-| 모드 | 하는 일 |
-|---|---|
-| **setup** | venv 생성 + `requirements.txt` 설치 + `.env` 부트스트랩 + 선택 서버를 선택 타겟(Code/Desktop)에 등록 |
-| **env** | Azure 자격증명만 새로 받아 `.env` 덮어쓰기 (기존 백업) |
-| **check** | 토큰 유효성 확인 + Code에 등록되고 포트 LISTEN 중인 HTTP 서버에 Streamable HTTP 8-probe 컴플라이언스 검사 |
-| **status** | 현재 환경 + 6개 서버 상태 스냅샷만 출력 |
-| **start** | 선택한 HTTP 서버를 백그라운드로 실행 |
-| **stop** | 선택한 HTTP 서버 중지 (포트 점유 프로세스 kill) |
-| **restart** | stop → start |
-
-## 등록 타겟 (Claude Code vs Claude Desktop)
+## 등록 타겟
 
 | 항목 | Claude Code | Claude Desktop |
 |---|---|---|
-| Config 파일 | `~/.claude.json` (= `C:\Users\USER\.claude.json`) | `%APPDATA%\Claude\claude_desktop_config.json` |
-| Transport | HTTP streamable (`server_stream.py`) | STDIO (`server_stdio.py`) |
-| 등록 방법 | `claude mcp add --transport http -s user` | JSON 파일 직접 병합 |
-| 서버 프로세스 | 별도 백그라운드 실행 필요 (이 스킬의 start 모드) | Claude Desktop이 자동 spawn |
+| Config | `~/.claude.json` | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Transport | HTTP (`server_stream.py`) | STDIO (`server_stdio.py`) |
+| 서버 프로세스 | 별도 백그라운드 실행 (이 스킬 start 모드) | Desktop이 자동 spawn |
 
-**두 config는 공유되지 않습니다** — 양쪽 다 쓰려면 양쪽 다 등록.
+**두 config는 공유되지 않음** — 양쪽 다 쓰려면 양쪽 다 등록. 상세는 [references/registration.md](references/registration.md).
 
-## 스킬 구성
+## 모드
 
-```
-ms365/
-├── SKILL.md
-├── references/
-│   ├── setup_reference.md            ← 경로/의존성/OAuth 흐름
-│   └── streamable_http_checklist.md  ← Streamable HTTP 8-probe 체크리스트
-└── scripts/
-    ├── verify_setup.py        ← venv/의존성/.env/토큰/등록/포트 통합 검증
-    └── streamable_http_probe.py  ← 등록된 HTTP MCP 서버의 8-probe 실행
-```
+| 모드 | 동작 |
+|---|---|
+| **setup** | venv + requirements 설치 + `.env` 부트스트랩 + MCP 등록 |
+| **env** | Azure 자격증명만 새로 받아 `.env` 덮어쓰기 (백업 포함) |
+| **check** | 토큰 유효성 + Code 등록 + LISTEN 중인 HTTP 서버 Streamable HTTP 8-probe |
+| **status** | 환경 + 6개 서버 상태 스냅샷만 출력 |
+| **start** | 선택한 HTTP 서버 백그라운드 실행 |
+| **stop** | 선택한 HTTP 서버 중지 (포트 점유 프로세스 kill) |
+| **restart** | stop → start |
+
+## 인자
+
+- `/ms365` — 상태 표시 + 스마트 진단으로 다음 동작 자동 결정
+- `/ms365 setup` / `env` / `check` / `status` — 명시 모드
+- `/ms365 start [<server>...]` — 시작 (인자 없으면 AskUserQuestion, `all` 또는 이름 나열)
+- `/ms365 stop [<server>...]` / `restart [<server>...]` — 중지/재시작
 
 ## 사전 확인 (Windows 절대 경로)
 
@@ -68,49 +61,51 @@ ms365/
 | venv Python | `c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe` |
 | `.env` (공통) | `c:\Users\USER\KR_MS365_mcp\.env` |
 | 토큰 DB (공통) | `c:\Users\USER\KR_MS365_mcp\database\auth.db` |
-| 인증 모듈 | `c:\Users\USER\KR_MS365_mcp\session\auth_manager.py` |
 | Claude Desktop config | `%APPDATA%\Claude\claude_desktop_config.json` |
-| OAuth 콜백 포트 | `.env`의 `AZURE_REDIRECT_URI` (현재 5000) |
+| OAuth 콜백 포트 | `.env`의 `AZURE_REDIRECT_URI` (5000 고정) |
 
-상세는 [references/setup_reference.md](references/setup_reference.md).
+상세 경로/의존성/OAuth flow는 [references/setup_reference.md](references/setup_reference.md).
 
-## 인자
+## 스킬 구성
 
-- `/ms365` — 상태 표시 + AskUserQuestion으로 모드 선택
-- `/ms365 setup` — 셋업
-- `/ms365 env` — `.env` 갱신
-- `/ms365 check` — 토큰 + Streamable HTTP 점검
-- `/ms365 status` — 상태만
-- `/ms365 start` — AskUserQuestion으로 시작할 서버 선택
-- `/ms365 start all` — STOPPED인 모든 서버 시작
-- `/ms365 start outlook teams` — 명시 서버만 시작
-- `/ms365 stop <server>` — 해당 서버 중지
-- `/ms365 stop all` — 전체 중지
-- `/ms365 restart <server>` — 재시작
+```
+ms365/
+├── SKILL.md
+├── references/
+│   ├── setup_reference.md            ← 경로·의존성·OAuth flow
+│   ├── streamable_http_checklist.md  ← Streamable HTTP 8-probe 체크리스트
+│   ├── registration.md               ← Code/Desktop 등록 상세
+│   ├── examples.md                   ← 시나리오 예시 5개
+│   └── caveats.md                    ← 운영 함정·보안 주의
+└── scripts/
+    ├── verify_setup.py            ← 통합 검증 (venv/.env/토큰/등록/포트)
+    ├── streamable_http_probe.py   ← 등록된 HTTP MCP 서버 8-probe
+    ├── register_claude_code.py    ← Claude Code (~/.claude.json) HTTP 등록
+    ├── register_claude_desktop.py ← Claude Desktop STDIO 등록
+    ├── check_token.py             ← AuthManager 토큰 유효성 확인
+    ├── health_check.py            ← /health 일괄 probe
+    └── stop_server.py             ← 포트 점유 프로세스 종료
+```
 
 ---
 
 ## Instructions
 
-순서대로 실행. Bash 도구 사용, 경로는 Windows 형식.
+순서대로 실행. Bash 도구 사용, 경로는 Windows 형식. 본 절차에서 자주 등장하는 변수:
+
+```bash
+PROJ="c:\Users\USER\KR_MS365_mcp"
+VENV_PY="$PROJ\venv\Scripts\python.exe"
+SCRIPTS="$PROJ\.claude\skills\ms365\scripts"
+```
 
 ### 1단계: 상태 스냅샷
 
 ```bash
-VENV_PY="c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe"
-SYS_PY=$(ls /c/Python3*/python.exe /mnt/c/Python3*/python.exe 2>/dev/null | head -1)
-
-if [ -f "/c/Users/USER/KR_MS365_mcp/venv/Scripts/python.exe" ] \
-   || [ -f "/mnt/c/Users/USER/KR_MS365_mcp/venv/Scripts/python.exe" ]; then
-  PY="$VENV_PY"
-else
-  PY="$SYS_PY"
-fi
-
-"$PY" "c:\Users\USER\KR_MS365_mcp\.claude\skills\ms365\scripts\verify_setup.py" --json
+"$VENV_PY" "$SCRIPTS\verify_setup.py" --json
 ```
 
-JSON을 한국어 표로 요약해서 한 번만 출력 (서버별로 Code/Desktop/Port 상태 + 공통 venv/.env/토큰). `status` 인자였다면 여기서 종료.
+venv 부재 시 시스템 Python(`ls /c/Python3*/python.exe`) 으로 폴백. JSON 결과를 한국어 표로 한 번만 요약 (서버별 Code/Desktop/Port + 공통 venv/.env/토큰). **`status` 인자였다면 여기서 종료**.
 
 **경로 무결성 체크**: 서버별 `claude_desktop.path_valid == false` 또는 `matches_project == false`이면 경고.
 
@@ -119,69 +114,41 @@ JSON을 한국어 표로 요약해서 한 번만 출력 (서버별로 Code/Deskt
 1단계 JSON을 분석해 3개 카테고리로 분류:
 
 - **`unhealthy_common`**: venv 없음 OR 의존성 누락 OR `.env` 부재/불완전 — 셋업 필수
-- **`unregistered`**: 각 서버에 대해 Code 또는 Desktop에 누락된 항목  
-  (예: `outlook`은 Code에는 있지만 Desktop에는 없음 → `outlook: [Desktop]`)
-- **`stopped`**: Code에 등록되어 있고(또는 사용자가 시작 원함) 포트가 LISTEN 아닌 서버
-
-이 3개에 따라 분기:
+- **`unregistered`**: 각 서버에 대해 Code 또는 Desktop에 누락된 항목 (예: `outlook: [Desktop]`)
+- **`stopped`**: Code에 등록되어 있고 포트가 LISTEN 아닌 서버
 
 #### 2-A. `unhealthy_common`이 있으면
 
+AskUserQuestion: `"지금 셋업할까요?"` — 예 → 3-A, 아니오 → 2-D.
+
+#### 2-B. `unregistered`가 있으면
+
+각 서버별로 누락된 타겟 표 표시 후 `AskUserQuestion` (multiSelect: true) — §AskUserQuestion 규약. 선택 결과는 (서버, 타겟) 쌍 리스트로 보관 후 **3-A-1~3-A-4 모두 skip, 3-A-5만 실행** (venv/의존성/.env는 이미 OK).
+
+선택 → 스크립트 호출 매핑:
+
+```bash
+# 선택된 쌍에서 타겟별 서버 CSV 추출
+SERVERS_FOR_CODE=$(echo "$PAIRS"    | awk -F: '$2=="code"'    | cut -d: -f1 | paste -sd,)
+SERVERS_FOR_DESKTOP=$(echo "$PAIRS" | awk -F: '$2=="desktop"' | cut -d: -f1 | paste -sd,)
+
+[ -n "$SERVERS_FOR_CODE" ]    && "$VENV_PY" "$SCRIPTS\register_claude_code.py"    --servers "$SERVERS_FOR_CODE"
+[ -n "$SERVERS_FOR_DESKTOP" ] && "$VENV_PY" "$SCRIPTS\register_claude_desktop.py" --servers "$SERVERS_FOR_DESKTOP"
 ```
-공통 환경이 불완전합니다: {빠진 항목들}
-셋업이 필요합니다.
-```
 
-AskUserQuestion: `"지금 셋업할까요?"` — 예 → 3-A단계, 아니오 → 모드 선택 메뉴(2-D)로.
-
-#### 2-B. `unregistered` 항목이 있으면
-
-각 서버별로 어디에 누락됐는지 표로 보여준 뒤 (예: `teams [Code:O Desktop:X]`),
-AskUserQuestion **multiSelect**:
-
-- question: `"누락된 등록을 추가할까요? (체크한 항목만 추가)"`
-- header: `"등록 추가"`
-- multiSelect: `true`
-- options: 누락된 (서버, 타겟) 쌍 각각을 1개 옵션으로
-  - 예: `"outlook → Claude Desktop (STDIO)"`, `"teams → Claude Code (HTTP)"`, `"teams → Claude Desktop (STDIO)"`
-- 미선택 항목은 건너뛰고, 선택한 (서버, 타겟) 조합으로 **3-A-5단계만 부분 실행** (venv/의존성/.env는 이미 OK이므로 skip).
-
-`unregistered`가 비어있으면 이 단계 건너뛰고 2-C로.
+2-B 경로는 Code 등록만 보충된 경우 4단계(백그라운드 실행) 진입 필요. Desktop만 보충됐으면 4단계 skip → 5단계로.
 
 #### 2-C. `stopped` 서버가 있으면
 
-Code에 등록된 서버 중 포트가 LISTEN 아닌 것만 추림. (Desktop-only 서버는 Desktop이 자동 spawn하므로 제외.)
+Code 등록 + 포트 LISTEN 아닌 것만 추림. `AskUserQuestion` (multiSelect: true) 로 선택받아 **3-D-1단계**.
 
-AskUserQuestion **multiSelect**:
+#### 2-D. 전부 OK이거나 위에서 다 처리
 
-- question: `"정지 중인 HTTP 서버를 백그라운드로 실행할까요?"`
-- header: `"서버 시작"`
-- multiSelect: `true`
-- options: 정지된 서버마다 1개 (예: `"outlook (5001)"`, `"teams (5003)"`)
-- 선택한 서버 → **3-D-1단계**로 (백그라운드 nohup 실행 + /health 확인)
+`✅ 모든 서버 정상 등록 + 실행 중` 출력 후 추가 작업 메뉴 (AskUserQuestion, 선택 안 하면 종료): .env 갱신 / 점검 / 중지·재시작 / 종료.
 
-`stopped`가 비어있으면 이 단계 건너뛰고 2-D로.
+### 2-E. 명시 인자가 있을 때
 
-#### 2-D. 전부 OK이거나 위에서 다 처리된 경우
-
-```
-✅ 모든 서버 정상 등록 + 실행 중
-```
-
-추가 작업이 필요하면 AskUserQuestion으로 모드 메뉴 표시 (선택 안 하고 종료 가능):
-
-- question: `"추가로 할 작업이 있나요? (없으면 그냥 종료)"`
-- header: `"MS365 MCP"`
-- multiSelect: `false`
-- options:
-  1. `".env 갱신 (Azure 자격증명 재입력)"` → 3-B
-  2. `"인증 점검 (토큰 + Streamable HTTP probe)"` → 3-C
-  3. `"서버 중지 / 재시작"` → 3-D-2/3-D-3
-  4. `"종료"` → 끝
-
-### 2-E단계: 명시 인자가 있을 때
-
-`setup`/`env`/`check`/`status`/`start`/`stop`/`restart` 인자가 있으면 1단계 출력 후 2단계(스마트 진단) 건너뛰고 곧장 해당 단계로 분기:
+1단계 출력 후 2단계는 건너뜀:
 
 | 인자 | 분기 |
 |---|---|
@@ -193,429 +160,245 @@ AskUserQuestion **multiSelect**:
 | `stop [서버...]` | 3-D-2 |
 | `restart [서버...]` | 3-D-3 |
 
-### 3-A단계: 셋업 모드
+### 3-A. 셋업 모드
 
-#### 3-A-0a. 처리할 서버 선택
+**3-A-0a**. `AskUserQuestion` multiSelect 로 처리할 서버 6개 중 선택 → `{servers}`. 미선택 시 종료.
 
-`AskUserQuestion` multiSelect, 6개 옵션:
-- `"outlook (메일, HTTP=5001)"`
-- `"calendar (일정, HTTP=5002)"`
-- `"teams (채팅/채널, HTTP=5003)"`
-- `"onedrive (파일, HTTP=5004)"`
-- `"onenote (노트, HTTP=5005)"`
-- `"todo (할일, HTTP=5006)"`
+**3-A-0b**. `AskUserQuestion` multiSelect 로 등록 타겟 선택 (`Claude Code (HTTP)` / `Claude Desktop (STDIO)`) → `{targets}`. 둘 다 미선택 시 종료.
 
-선택 결과를 `{servers}` 집합으로 기억. 미선택 시 종료.
-
-#### 3-A-0b. 등록 타겟 선택
-
-`AskUserQuestion` multiSelect:
-1. `"Claude Code (HTTP)"` — `~/.claude.json` -s user
-2. `"Claude Desktop (STDIO)"` — `claude_desktop_config.json`
-
-`{targets}` 집합으로 기억. 둘 다 미선택이면 종료.
-
-> 이후 3-A-5와 4단계는 `{servers}`의 각 서버에 대해 반복. `{name}`, `{port}`, `{stdio_script}`, `{stream_script}`는 위 "지원 서버" 표 참조.
-
-#### 3-A-1. Windows 시스템 Python 탐색
+**3-A-1. Windows 시스템 Python 탐색**
 
 ```bash
 ls /c/Python3*/python.exe /mnt/c/Python3*/python.exe 2>/dev/null
 ```
 
-여러 개면 사용자 선택. 없으면 직접 입력. `SYSTEM_PYTHON`으로 기억.
+여러 개면 사용자 선택, 없으면 직접 입력. `SYSTEM_PYTHON`으로 기억.
 
-#### 3-A-2. venv 생성 (없으면)
+**3-A-2. venv 생성 (없으면)**
 
 ```bash
-if [ -f "/c/Users/USER/KR_MS365_mcp/venv/Scripts/python.exe" ] \
-   || [ -f "/mnt/c/Users/USER/KR_MS365_mcp/venv/Scripts/python.exe" ]; then
-  echo "venv 존재 — 의존성 업데이트만"
-else
-  "$SYSTEM_PYTHON" -m venv "c:\Users\USER\KR_MS365_mcp\venv"
+if [ ! -f "$PROJ/venv/Scripts/python.exe" ]; then
+  "$SYSTEM_PYTHON" -m venv "$PROJ\venv"
 fi
 ```
 
-#### 3-A-3. 의존성 설치
+**3-A-3. 의존성 설치 (타임아웃 600초)**
 
 ```bash
-"c:\Users\USER\KR_MS365_mcp\venv\Scripts\pip.exe" install -r "c:\Users\USER\KR_MS365_mcp\requirements.txt"
+"$PROJ\venv\Scripts\pip.exe" install -r "$PROJ\requirements.txt"
 ```
 
-타임아웃 600초. 실패 시 마지막 에러 라인 보여주고 계속 여부 질문.
+실패 시 마지막 에러 라인 표시 + 계속 여부 질문.
 
-#### 3-A-4. `.env` 부트스트랩 (없을 때만)
+**3-A-4. `.env` 부트스트랩** — `.env`가 없으면 3-B 자격증명 입력 로직 그대로 실행. 있으면 skip.
 
-`.env`가 없으면 → **3-B단계**의 자격증명 입력 로직 그대로 실행. 있으면 건너뜀.
-
-#### 3-A-5. MCP 등록 (`{servers}` × `{targets}` 조합 반복)
-
-각 서버에 대해:
-
-**3-A-5-CC: Claude Code (HTTP)** — `{targets}`에 Code 포함 시
-
-> **스코프는 항상 `-s user` (글로벌)** — 모든 Claude Code 세션에서 활성화.
+**3-A-5. MCP 등록** — `{servers}` 를 CSV 로 결합한 뒤 `{targets}` 에 따라 **두 스크립트를 조건부로** 호출 (Code 또는 Desktop 또는 둘 다):
 
 ```bash
-# {name} = outlook/calendar/teams/onedrive/onenote/todo
-# {port} = 5001/5002/5003/5004/5005/5006
-claude mcp remove {name} -s user 2>/dev/null || true
-claude mcp remove {name} -s local 2>/dev/null || true
-claude mcp add -s user --transport http {name} http://localhost:{port}/mcp
-claude mcp get {name} 2>&1 | head -10
-```
+SERVERS_CSV=$(IFS=,; echo "${SERVERS[*]}")   # 예: outlook,teams
 
-CLI 폴백 (`claude` 없을 때) — `~/.claude.json` 직접 편집:
+# Code 포함 시 — 항상 -s user (글로벌 스코프). 모든 Claude Code 세션에서 활성화.
+if printf '%s\n' "${TARGETS[@]}" | grep -q "Claude Code"; then
+  "$VENV_PY" "$SCRIPTS\register_claude_code.py" --servers "$SERVERS_CSV"
+fi
 
-```bash
-"c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe" - <<'PY'
-import json
-from pathlib import Path
-
-p = Path.home() / ".claude.json"
-data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
-mcp = data.setdefault("mcpServers", {})
-
-# 선택된 서버 목록 (스킬 컨텍스트에서 동적 결정)
-servers_to_register = {
-    "outlook":  5001,
-    "calendar": 5002,
-    "teams":    5003,
-    "onedrive": 5004,
-    "onenote":  5005,
-    "todo":     5006,
-}
-for name, port in servers_to_register.items():
-    mcp[name] = {"type": "http", "url": f"http://localhost:{port}/mcp"}
-
-# 프로젝트-스코프에 잔존하는 동일 이름 entry 제거
-for proj_path, proj_data in (data.get("projects") or {}).items():
-    proj_mcp = proj_data.get("mcpServers") if isinstance(proj_data, dict) else None
-    if isinstance(proj_mcp, dict):
-        for name in list(proj_mcp.keys()):
-            if name in servers_to_register:
-                proj_mcp.pop(name)
-
-p.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-print(f"updated {p}: top-level mcpServers = {list(mcp.keys())}")
-PY
-```
-
-> HTTP는 클라이언트가 외부 서버에 연결만 함 → `server_stream.py` 별도 실행 필요 (4단계).
-
-**3-A-5-CD: Claude Desktop (STDIO)** — `{targets}`에 Desktop 포함 시
-
-한 번의 read-modify-write로 처리 (다른 entry 보존):
-
-```bash
-"c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe" - <<'PY'
-import json, os
-from pathlib import Path
-
-cfg = Path(os.environ["APPDATA"]) / "Claude" / "claude_desktop_config.json"
-cfg.parent.mkdir(parents=True, exist_ok=True)
-
-data = {}
-if cfg.exists():
-    try:
-        data = json.loads(cfg.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError as e:
-        print(f"ERROR: existing config invalid JSON: {e}")
-        raise SystemExit(1)
-
-PROJECT = r"c:\Users\USER\KR_MS365_mcp"
-PYTHON = rf"{PROJECT}\venv\Scripts\python.exe"
-mcp = data.setdefault("mcpServers", {})
-
-# 선택된 서버 목록 (스킬 컨텍스트에서 동적 결정)
-SERVERS_TO_REGISTER = ["outlook", "calendar", "teams", "onedrive", "onenote", "todo"]
-
-for name in SERVERS_TO_REGISTER:
-    mcp[name] = {
-        "command": PYTHON,
-        "args": [rf"{PROJECT}\mcp_{name}\mcp_server\server_stdio.py"],
-        "env": {
-            "PYTHONPATH": PROJECT,
-            "PYTHONUTF8": "1",
-            "PYTHONIOENCODING": "utf-8",
-        },
-    }
-
-cfg.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-print(f"updated {cfg} — mcpServers: {list(mcp.keys())}")
-PY
-```
-
-> Claude Desktop 재시작 필요. STDIO는 Desktop이 자동 spawn.
-
-#### 3-A-6. 4단계로 (Code 포함 시) 또는 5단계로
-
-### 3-B단계: `.env` 갱신 모드
-
-#### 3-B-1. 기존 `.env` 백업
-
-```bash
-if [ -f "/c/Users/USER/KR_MS365_mcp/.env" ]; then
-  cp "c:\Users\USER\KR_MS365_mcp\.env" "c:\Users\USER\KR_MS365_mcp\.env.bak.$(date +%Y%m%d_%H%M%S)"
+# Desktop 포함 시 — claude_desktop_config.json 갱신 후 Desktop 재시작 필요.
+if printf '%s\n' "${TARGETS[@]}" | grep -q "Claude Desktop"; then
+  "$VENV_PY" "$SCRIPTS\register_claude_desktop.py" --servers "$SERVERS_CSV"
 fi
 ```
 
-#### 3-B-2. Azure 자격증명 수집 (한 번에 텍스트로)
+두 스크립트 모두 read-modify-write 로 다른 엔트리(`gmail`, `google_calendar` 등)를 보존. `claude` CLI 가 PATH 에 있으면 `claude mcp add -s user --transport http <name> http://localhost:<port>/mcp` 도 동등. CLI vs 스크립트 비교·디버깅은 [references/registration.md](references/registration.md).
+
+**3-A-6. 다음 단계 결정**
+- `{targets}` 에 **Claude Code 포함** → **4단계 (서버 백그라운드 실행)** 필요. HTTP 는 클라이언트가 외부 서버에 연결만 하므로 `server_stream.py` 별도 실행.
+- **Desktop 만** 선택 → **5단계 (검증)** 로. Desktop 이 STDIO 를 자동 spawn 하므로 백그라운드 실행 불필요.
+
+### 3-B. `.env` 갱신 모드
+
+**3-B-1. 기존 백업**
+
+```bash
+[ -f "$PROJ/.env" ] && cp "$PROJ\.env" "$PROJ\.env.bak.$(date +%Y%m%d_%H%M%S)"
+```
+
+**3-B-2. Azure 자격증명 수집** (한 번에 텍스트로):
 
 ```
 다음 3개 값을 알려주세요:
-- AZURE_CLIENT_ID (Azure AD App의 Application/Client ID)
-- AZURE_CLIENT_SECRET (Client Secret 값)
-- AZURE_TENANT_ID (Tenant UUID 또는 'common')
+- AZURE_CLIENT_ID
+- AZURE_CLIENT_SECRET
+- AZURE_TENANT_ID (UUID 또는 'common')
 ```
 
-**고정값 (묻지 말 것):**
-- `AZURE_REDIRECT_URI=http://localhost:5000/callback`
-- `AZURE_SCOPES=offline_access openid`
-- `AZURE_AUTHORITY=https://login.microsoftonline.com`
+**고정값 (묻지 말 것):** `AZURE_REDIRECT_URI=http://localhost:5000/callback`, `AZURE_SCOPES=offline_access openid`, `AZURE_AUTHORITY=https://login.microsoftonline.com`.
 
-#### 3-B-3. `.env` 작성 (`Write` 도구)
+**3-B-3. `.env` 작성** (`Write` 도구). **민감정보 채팅 출력 금지** — 라인 수만 확인.
 
-```
-# Azure AD OAuth 설정
-AZURE_CLIENT_ID={CLIENT_ID}
-AZURE_CLIENT_SECRET={CLIENT_SECRET}
-AZURE_TENANT_ID={TENANT_ID}
-AZURE_REDIRECT_URI=http://localhost:5000/callback
+### 3-C. 점검 모드
 
-# 선택 설정
-AZURE_AUTHORITY=https://login.microsoftonline.com
-AZURE_SCOPES=offline_access openid
-```
-
-**민감정보 출력 금지** — 라인 수만 확인.
-
-### 3-C단계: 점검 모드 (토큰 + Streamable HTTP)
-
-#### 3-C-1. 토큰 점검
+**3-C-1. 토큰 점검**
 
 ```bash
-cd /c/Users/USER/KR_MS365_mcp
-"c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe" - <<'PY'
-import asyncio, json
-from session.auth_manager import AuthManager, get_default_user_email
-
-async def main():
-    am = AuthManager()
-    try:
-        email = get_default_user_email()
-        if not email:
-            print(json.dumps({"status": "no_user"}, ensure_ascii=False))
-            return
-        token = await am.validate_and_refresh_token(email, auto_reauth=False)
-        if token:
-            print(json.dumps({"status": "valid", "email": email}, ensure_ascii=False))
-        else:
-            print(json.dumps({"status": "invalid_or_expired", "email": email}, ensure_ascii=False))
-    finally:
-        await am.close()
-
-asyncio.run(main())
-PY
+"$VENV_PY" "$SCRIPTS\check_token.py"
+# {"status":"valid","email":"..."} | invalid_or_expired | no_user | error
 ```
 
-#### 3-C-2. Streamable HTTP 컴플라이언스 점검 (서버별)
-
-`~/.claude.json`에 `type: http`로 등록되고 포트가 LISTEN 중인 각 서버에 대해 probe 실행:
+**3-C-2. Streamable HTTP 컴플라이언스** — LISTEN 중인 각 서버에 대해 probe 실행:
 
 ```bash
 for entry in "outlook 5001" "calendar 5002" "teams 5003" "onedrive 5004" "onenote 5005" "todo 5006"; do
   name=${entry%% *}; port=${entry##* }
   if powershell.exe -NoProfile -Command "Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue" 2>/dev/null | grep -q LocalPort; then
     echo "=== $name (port $port) ==="
-    "c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe" \
-      "c:\Users\USER\KR_MS365_mcp\.claude\skills\ms365\scripts\streamable_http_probe.py" \
-      --base "http://localhost:$port"
+    "$VENV_PY" "$SCRIPTS\streamable_http_probe.py" --base "http://localhost:$port"
   else
     echo "$name (port $port): 미실행 — probe 건너뜀"
   fi
 done
 ```
 
-합격선:
-- **8/8** → `compliant`
-- **4–7개** → `partial`
-- **0–3개** → `non-compliant`
+합격선: 8/8 → `compliant`, 4~7 → `partial`, 0~3 → `non-compliant`. 비호환 진단은 [references/streamable_http_checklist.md](references/streamable_http_checklist.md).
 
-비호환 진단은 [references/streamable_http_checklist.md](references/streamable_http_checklist.md).
+### 3-D. 서버 운영
 
-### 3-D단계: 서버 운영 (start/stop/restart)
-
-#### 3-D-1. start 모드
-
-`/ms365 start` (인자 없음) → 1단계 상태에서 STOPPED 서버 목록을 AskUserQuestion multiSelect로 표시.
-`/ms365 start all` → 모든 STOPPED 서버.
-`/ms365 start outlook teams` → 명시한 서버만.
+**3-D-1. start** — `/ms365 start` (인자 없음) → 1단계의 STOPPED 서버를 `AskUserQuestion` multiSelect 로. `all` 또는 명시 이름은 직접 매핑.
 
 각 선택된 `{name}`, `{port}`:
 
 ```bash
-# 포트 점유 확인
 if powershell.exe -NoProfile -Command "Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue" 2>/dev/null | grep -q LocalPort; then
   echo "{name}: 포트 {port} 이미 사용 중 — skip"
 else
-  cd /c/Users/USER/KR_MS365_mcp
+  cd "$PROJ"
   nohup ./venv/Scripts/python.exe mcp_{name}/mcp_server/server_stream.py > /tmp/mcp_{name}.log 2>&1 &
   disown
   echo "{name}: launched"
 fi
 ```
 
-전부 띄운 후 3초 대기, `/health` 응답 확인:
+전부 띄운 뒤 3초 대기 후 health 확인:
 
 ```bash
 sleep 3
-"c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe" - <<'PY'
-import json, urllib.request
-SERVERS = {"outlook":5001,"calendar":5002,"teams":5003,"onedrive":5004,"onenote":5005,"todo":5006}
-for name, port in SERVERS.items():
-    try:
-        with urllib.request.urlopen(f"http://localhost:{port}/health", timeout=1) as r:
-            print(f"{name:9} {port}  healthy: {json.loads(r.read())}")
-    except Exception as e:
-        print(f"{name:9} {port}  -")
-PY
+"$VENV_PY" "$SCRIPTS\health_check.py" --servers <CSV>   # 또는 --servers all
 ```
 
-실패한 서버는 로그 끝 20줄 출력: `tail -20 /tmp/mcp_{name}.log`
+health_check.py 출력 형식:
+- `outlook   5001  healthy: {"tool_count":N,...}` — 서버 정상
+- `teams     5003  unreachable` — 포트 LISTEN 안 됨 (실패)
 
-#### 3-D-2. stop 모드
+실패한 서버는 로그 확인: `tail -20 /tmp/mcp_{name}.log`. 운영 함정은 [references/caveats.md](references/caveats.md).
 
-`/ms365 stop outlook` 또는 `/ms365 stop all`:
+**3-D-2. stop** — `/ms365 stop <server>` 또는 `stop all`:
 
 ```bash
-"c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe" - <<'PY'
-import subprocess
-PORT = 5001   # 인자로 결정. all이면 6개 포트 모두 반복
-ps = f"""
-$conn = Get-NetTCPConnection -LocalPort {PORT} -State Listen -ErrorAction SilentlyContinue
-if ($conn) {{
-    foreach ($c in $conn) {{ Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue }}
-    Write-Output "stopped PID(s) on port {PORT}"
-}} else {{
-    Write-Output "no listener on port {PORT}"
-}}
-"""
-subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps])
-PY
+"$VENV_PY" "$SCRIPTS\stop_server.py" --servers outlook        # 단일
+"$VENV_PY" "$SCRIPTS\stop_server.py" --servers all            # 전체 6개
+"$VENV_PY" "$SCRIPTS\stop_server.py" --ports 5001 5002        # 포트 직접 지정도 가능
 ```
 
-#### 3-D-3. restart 모드
+**3-D-3. restart** — `stop {name}` → 1초 대기 → `start {name}`.
 
-`stop {name}` → 1초 대기 → `start {name}`.
+### 4단계: 서버 백그라운드 실행 (Code 등록 경로만)
 
-### 4단계: (셋업 모드 + Code 등록 시) 서버 백그라운드 실행
+**진입 조건**: 3-A 또는 2-B 경로에서 **Claude Code 등록을 수행한 경우만**. Desktop 전용 경로는 이 단계를 건너뛰고 5단계로 — Desktop이 STDIO 를 자동 spawn 하므로.
 
-Claude Desktop만 등록했으면 건너뜀 (자동 spawn).
-
-`AskUserQuestion`: `"선택한 서버들을 지금 백그라운드로 실행할까요? ({servers})"` — 예/아니오.
-
-"예" 시 3-D-1과 동일 로직으로 `{servers}` 각각 실행.
+`AskUserQuestion`: `"선택한 서버들을 지금 백그라운드로 실행할까요? ({servers})"` — 예/아니오. 예 시 3-D-1과 동일 로직.
 
 ### 5단계: 최종 검증
 
 ```bash
-"$VENV_PY" "c:\Users\USER\KR_MS365_mcp\.claude\skills\ms365\scripts\verify_setup.py"
+"$VENV_PY" "$SCRIPTS\verify_setup.py"
 ```
 
-표 출력 + 모드별 요약:
-
-**셋업 완료:**
-```
-✅ 셋업 완료
-- venv / 의존성 / .env (CLIENT_ID/SECRET/TENANT_ID)
-- 처리된 서버: {servers}
-- [Code]    http://localhost:{port}/mcp  (RUNNING/STOPPED)
-- [Desktop] STDIO 항목 추가 — Desktop 재시작 필요
-
-인증: Claude에서 해당 서버 툴 처음 호출 시 auth URL 자동 표시.
-(.env 자격증명 1세트로 6개 서버가 같은 auth.db 공유)
-```
-
-**.env 갱신:** `✅ .env 갱신 완료 (백업: .env.bak.{timestamp})`
-
-**점검:** 토큰 + 서버별 probe 결과 표.
-
-**start/stop/restart:** 1단계 상태 표 재출력.
+표 출력 후 모드별 요약 ("✅ 셋업 완료" / ".env 갱신 완료 (백업: ...)" / 토큰+probe 결과 표 / 1단계 상태 표 재출력).
 
 ---
 
-## 보안 주의
+## AskUserQuestion 명세
 
-- `.env` 내용을 채팅에 출력 금지 (Client Secret 평문)
-- `.env`, `.env.bak.*`는 `.gitignore` 등재 확인
-- 입력받은 자격증명을 memory 시스템에 저장 금지
-- `auth.db`는 평문 SQLite — 공유 머신에 두지 말 것
+의사결정 지점이므로 본문에 유지. 모드별 question/header/options/multiSelect.
 
-## 주의사항
+### 2-A: 셋업 여부 (`unhealthy_common`)
 
-- **등록만 함, spawn 안 함** (HTTP) — Claude Code는 외부 서버에 붙기만 하므로 `start` 모드로 띄워야 함
-- **포트 점유** — 이미 떠있는 서버는 재시작하지 않음. 강제 재시작 원하면 `restart` 사용
-- **로그 위치** — `/tmp/mcp_{name}.log` (Git Bash MSYS 경로, 실제로는 `%TEMP%`)
-- venv는 재생성하지 않고 `pip install`만 재실행 (멱등)
-- Claude Desktop은 config 변경 후 **재시작** 필요
-- 새 Claude Code 세션에서만 등록된 MCP가 보임
-- 콜백 포트 5000은 Hyper-V 동적 예약과 충돌 가능 — `.env`의 `AZURE_REDIRECT_URI` + Azure Portal 동시 변경으로 회피
+```yaml
+question: "공통 환경이 불완전합니다: {빠진 항목들}. 지금 셋업할까요?"
+header: "셋업 여부"
+multiSelect: false
+options:
+  - label: "예 (3-A로 진행)"
+  - label: "아니오 (모드 메뉴로)"
+```
+
+### 2-B: 누락된 등록 보충
+
+```yaml
+question: "누락된 등록을 추가할까요? (체크한 항목만 추가)"
+header: "등록 추가"
+multiSelect: true
+options:
+  - label: "outlook → Claude Desktop (STDIO)"
+  - label: "teams → Claude Code (HTTP)"
+  - label: "teams → Claude Desktop (STDIO)"
+  # … (누락된 (서버, 타겟) 쌍마다 1개)
+```
+
+### 2-C: 정지된 HTTP 서버 시작
+
+```yaml
+question: "정지 중인 HTTP 서버를 백그라운드로 실행할까요?"
+header: "서버 시작"
+multiSelect: true
+options:
+  - label: "outlook (5001)"
+  - label: "teams (5003)"
+  # …
+```
+
+### 2-D: 추가 작업 선택
+
+```yaml
+question: "추가로 할 작업이 있나요? (없으면 그냥 종료)"
+header: "MS365 MCP"
+multiSelect: false
+options:
+  - label: ".env 갱신 (Azure 자격증명 재입력)"
+  - label: "인증 점검 (토큰 + Streamable HTTP probe)"
+  - label: "서버 중지 / 재시작"
+  - label: "종료"
+```
+
+### 3-A-0a: 셋업할 서버 선택
+
+```yaml
+question: "셋업할 서버를 모두 고르세요."
+header: "서버"
+multiSelect: true
+options:
+  - label: "outlook (메일, HTTP=5001)"
+  - label: "calendar (일정, HTTP=5002)"
+  - label: "teams (채팅/채널, HTTP=5003)"
+  # 4개 초과 시 처음 3개 + "그 외 직접 입력"
+```
+
+### 3-A-0b: 등록 타겟 선택
+
+```yaml
+question: "등록 타겟을 모두 고르세요."
+header: "등록 타겟"
+multiSelect: true
+options:
+  - label: "Claude Code (HTTP)"
+  - label: "Claude Desktop (STDIO)"
+```
 
 ---
 
-## Examples
+## 더 보기
 
-**`/ms365`** (첫 설치, 6개 다)
-
-```
-1. 상태: 다 X
-2-A. unhealthy_common 감지 → "지금 셋업할까요?" 예
-3-A-0a. 서버 → 6개 다
-3-A-0b. 타겟 → Code + Desktop
-3-A-1~3. Python 발견 → venv 생성 → pip install
-3-A-4. .env 입력 → 작성
-3-A-5-CC/CD. Code 6개 + Desktop 6개 등록
-4. server_stream.py 6개 백그라운드 실행 → /health 확인
-5. 검증 표 출력
-```
-
-**`/ms365`** (기존 환경 — 일부 누락)
-
-```
-1. 상태: venv/deps/.env OK. teams는 Code만 등록, Desktop 누락. todo는 Code도 Desktop도 미등록
-2-B. AskUserQuestion multiSelect:
-     ☐ teams → Claude Desktop (STDIO)
-     ☐ todo  → Claude Code (HTTP)
-     ☐ todo  → Claude Desktop (STDIO)
-   → 3개 다 체크 → 3-A-5만 부분 실행
-2-C. 정지 서버 감지 (outlook 5001, todo 5006) → multiSelect로 시작 선택 → 3-D-1
-5. 검증 표
-```
-
-**`/ms365`** (전부 OK)
-
-```
-1. 상태: venv/deps/.env/토큰 OK, 6개 서버 다 Code+Desktop 등록 + 포트 LISTEN
-2-D. ✅ 모든 서버 정상 — 추가 작업 메뉴 (없으면 종료)
-```
-
-**`/ms365 start outlook teams`**
-
-```
-1. 상태 확인
-3-D-1. outlook(5001)/teams(5003) 백그라운드 실행 → /health OK
-```
-
-**`/ms365 stop all`**
-
-```
-3-D-2. 6개 포트 모두 Stop-Process
-```
-
-**`/ms365 check`**
-
-```
-3-C-1. validate_and_refresh_token
-3-C-2. LISTEN 중인 서버마다 8-probe → compliant/partial/non-compliant
-```
+- **시나리오 예시 5개**: [references/examples.md](references/examples.md) — 첫 설치 / 일부 누락 / 모두 OK / start / stop / check
+- **등록 상세 (CLI vs JSON, 디버깅)**: [references/registration.md](references/registration.md)
+- **운영 함정 · 보안 주의**: [references/caveats.md](references/caveats.md)
+- **Streamable HTTP 8-probe 체크리스트**: [references/streamable_http_checklist.md](references/streamable_http_checklist.md)
+- **경로·의존성·OAuth flow 상세**: [references/setup_reference.md](references/setup_reference.md)
