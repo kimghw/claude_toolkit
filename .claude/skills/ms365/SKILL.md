@@ -1,11 +1,11 @@
 ---
-name: setup-ms365
+name: ms365
 description: KR_MS365_mcp 통합 셋업·운영 스킬. 6개 MS365 MCP 서버(outlook/calendar/teams/onedrive/onenote/todo)의 venv·의존성·.env·MCP 등록(셋업)부터 HTTP 서버 백그라운드 실행·중지·상태점검까지 한 스킬에서 처리합니다. AskUserQuestion으로 모드/서버/등록타겟을 받고, Azure OAuth는 MCP 서버가 첫 툴 호출 시 자동 트리거합니다.
 ---
 
 # MS365 MCP 통합 셋업·운영 스킬
 
-이 스킬은 **`/setup-ms365`**로 호출. 셋업(venv/.env/등록)과 서버 운영(start/stop/status)을 한 곳에서 처리합니다.
+이 스킬은 **`/ms365`**로 호출. 셋업(venv/.env/등록)과 서버 운영(start/stop/status)을 한 곳에서 처리합니다.
 
 ## 인증은 MCP 서버가 자동 처리 — 이 스킬이 하지 않습니다
 
@@ -50,7 +50,7 @@ OAuth 브라우저 플로우, refresh_token 갱신, 콜백 서버, `auth.db` 저
 ## 스킬 구성
 
 ```
-setup-ms365/
+ms365/
 ├── SKILL.md
 ├── references/
 │   ├── setup_reference.md            ← 경로/의존성/OAuth 흐름
@@ -76,17 +76,17 @@ setup-ms365/
 
 ## 인자
 
-- `/setup-ms365` — 상태 표시 + AskUserQuestion으로 모드 선택
-- `/setup-ms365 setup` — 셋업
-- `/setup-ms365 env` — `.env` 갱신
-- `/setup-ms365 check` — 토큰 + Streamable HTTP 점검
-- `/setup-ms365 status` — 상태만
-- `/setup-ms365 start` — AskUserQuestion으로 시작할 서버 선택
-- `/setup-ms365 start all` — STOPPED인 모든 서버 시작
-- `/setup-ms365 start outlook teams` — 명시 서버만 시작
-- `/setup-ms365 stop <server>` — 해당 서버 중지
-- `/setup-ms365 stop all` — 전체 중지
-- `/setup-ms365 restart <server>` — 재시작
+- `/ms365` — 상태 표시 + AskUserQuestion으로 모드 선택
+- `/ms365 setup` — 셋업
+- `/ms365 env` — `.env` 갱신
+- `/ms365 check` — 토큰 + Streamable HTTP 점검
+- `/ms365 status` — 상태만
+- `/ms365 start` — AskUserQuestion으로 시작할 서버 선택
+- `/ms365 start all` — STOPPED인 모든 서버 시작
+- `/ms365 start outlook teams` — 명시 서버만 시작
+- `/ms365 stop <server>` — 해당 서버 중지
+- `/ms365 stop all` — 전체 중지
+- `/ms365 restart <server>` — 재시작
 
 ---
 
@@ -107,7 +107,7 @@ else
   PY="$SYS_PY"
 fi
 
-"$PY" "c:\Users\USER\KR_MS365_mcp\.claude\skills\setup-ms365\scripts\verify_setup.py" --json
+"$PY" "c:\Users\USER\KR_MS365_mcp\.claude\skills\ms365\scripts\verify_setup.py" --json
 ```
 
 JSON을 한국어 표로 요약해서 한 번만 출력 (서버별로 Code/Desktop/Port 상태 + 공통 venv/.env/토큰). `status` 인자였다면 여기서 종료.
@@ -429,7 +429,7 @@ for entry in "outlook 5001" "calendar 5002" "teams 5003" "onedrive 5004" "onenot
   if powershell.exe -NoProfile -Command "Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue" 2>/dev/null | grep -q LocalPort; then
     echo "=== $name (port $port) ==="
     "c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe" \
-      "c:\Users\USER\KR_MS365_mcp\.claude\skills\setup-ms365\scripts\streamable_http_probe.py" \
+      "c:\Users\USER\KR_MS365_mcp\.claude\skills\ms365\scripts\streamable_http_probe.py" \
       --base "http://localhost:$port"
   else
     echo "$name (port $port): 미실행 — probe 건너뜀"
@@ -448,9 +448,9 @@ done
 
 #### 3-D-1. start 모드
 
-`/setup-ms365 start` (인자 없음) → 1단계 상태에서 STOPPED 서버 목록을 AskUserQuestion multiSelect로 표시.
-`/setup-ms365 start all` → 모든 STOPPED 서버.
-`/setup-ms365 start outlook teams` → 명시한 서버만.
+`/ms365 start` (인자 없음) → 1단계 상태에서 STOPPED 서버 목록을 AskUserQuestion multiSelect로 표시.
+`/ms365 start all` → 모든 STOPPED 서버.
+`/ms365 start outlook teams` → 명시한 서버만.
 
 각 선택된 `{name}`, `{port}`:
 
@@ -486,7 +486,7 @@ PY
 
 #### 3-D-2. stop 모드
 
-`/setup-ms365 stop outlook` 또는 `/setup-ms365 stop all`:
+`/ms365 stop outlook` 또는 `/ms365 stop all`:
 
 ```bash
 "c:\Users\USER\KR_MS365_mcp\venv\Scripts\python.exe" - <<'PY'
@@ -520,7 +520,7 @@ Claude Desktop만 등록했으면 건너뜀 (자동 spawn).
 ### 5단계: 최종 검증
 
 ```bash
-"$VENV_PY" "c:\Users\USER\KR_MS365_mcp\.claude\skills\setup-ms365\scripts\verify_setup.py"
+"$VENV_PY" "c:\Users\USER\KR_MS365_mcp\.claude\skills\ms365\scripts\verify_setup.py"
 ```
 
 표 출력 + 모드별 요약:
@@ -566,7 +566,7 @@ Claude Desktop만 등록했으면 건너뜀 (자동 spawn).
 
 ## Examples
 
-**`/setup-ms365`** (첫 설치, 6개 다)
+**`/ms365`** (첫 설치, 6개 다)
 
 ```
 1. 상태: 다 X
@@ -580,7 +580,7 @@ Claude Desktop만 등록했으면 건너뜀 (자동 spawn).
 5. 검증 표 출력
 ```
 
-**`/setup-ms365`** (기존 환경 — 일부 누락)
+**`/ms365`** (기존 환경 — 일부 누락)
 
 ```
 1. 상태: venv/deps/.env OK. teams는 Code만 등록, Desktop 누락. todo는 Code도 Desktop도 미등록
@@ -593,27 +593,27 @@ Claude Desktop만 등록했으면 건너뜀 (자동 spawn).
 5. 검증 표
 ```
 
-**`/setup-ms365`** (전부 OK)
+**`/ms365`** (전부 OK)
 
 ```
 1. 상태: venv/deps/.env/토큰 OK, 6개 서버 다 Code+Desktop 등록 + 포트 LISTEN
 2-D. ✅ 모든 서버 정상 — 추가 작업 메뉴 (없으면 종료)
 ```
 
-**`/setup-ms365 start outlook teams`**
+**`/ms365 start outlook teams`**
 
 ```
 1. 상태 확인
 3-D-1. outlook(5001)/teams(5003) 백그라운드 실행 → /health OK
 ```
 
-**`/setup-ms365 stop all`**
+**`/ms365 stop all`**
 
 ```
 3-D-2. 6개 포트 모두 Stop-Process
 ```
 
-**`/setup-ms365 check`**
+**`/ms365 check`**
 
 ```
 3-C-1. validate_and_refresh_token
