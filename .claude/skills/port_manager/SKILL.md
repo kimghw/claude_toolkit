@@ -1,8 +1,8 @@
 ---
 name: port_manager
-description: 현재 프로젝트의 서버·포트를 SSOT(port_list.md)에서 조회·등록·갱신·삭제하고, 등록된 서버를 상태확인→종료→재시작까지 처리. 행이 0이면 등록 안내, 1이면 자동 재시작, 2+이면 AskUserQuestion으로 선택받아 재시작. NSSM 으로 Windows 서비스 등록·해제·기동도 동일 인터페이스로 제공. 포트 검색·종료·기동·표 편집·NSSM 호출은 port_ops.sh 스크립트로 위임. TRIGGER when 사용자가 /port_manager 호출, 현재 프로젝트 포트·서버 등록·조회·재시작·재기동·Windows 서비스 등록 요청. DO NOT TRIGGER when 외부 호스트 접속, 배포·CI 파이프라인.
+description: 현재 프로젝트의 서버·포트를 SSOT(port_list.md)에서 조회·등록·갱신·삭제하고, 등록된 서버를 상태확인→종료→재시작까지 처리. 인자 없이 호출하면 AskUserQuestion 으로 재시작 / 등록(update) / NSSM 중 모드를 먼저 선택받는다. NSSM 으로 Windows 서비스 등록·해제·기동도 동일 인터페이스로 제공. 포트 검색·종료·기동·표 편집·NSSM 호출은 port_ops.sh 스크립트로 위임. TRIGGER when 사용자가 /port_manager 호출, 현재 프로젝트 포트·서버 등록·조회·재시작·재기동·Windows 서비스 등록 요청. DO NOT TRIGGER when 외부 호스트 접속, 배포·CI 파이프라인.
 allowed-tools: Bash AskUserQuestion Read
-argument-hint: "[show|all|update [<path>]|add|<port>|rm <port>|nssm <op> [<port>]|help]"
+argument-hint: "[show|all|restart|update [<path>]|add|<port>|rm <port>|nssm <op> [<port>]|help]"
 ---
 
 # port_manager — 프로젝트 서버 등록·조회·재시작
@@ -16,14 +16,16 @@ argument-hint: "[show|all|update [<path>]|add|<port>|rm <port>|nssm <op> [<port>
 - **단일 출처(SSOT)**: 모든 결정은 `port_list.md` 한 파일에서 시작한다. 다른 곳을 추측하지 않는다.
 - **스크립트 우선**: 포트 검색·상태·종료·기동·표 편집은 모두 `port_ops.sh` 가 처리한다. Claude가 `ss`/`lsof`/`kill`/`awk`/`sed` 로 표를 직접 다루지 않는다.
 - **현재 프로젝트만 (기본)**: `basename "$CLAUDE_PROJECT_DIR"` 으로 결정한 프로젝트만 다룬다. 다른 프로젝트 행은 `all` 모드에서만 표시한다. **예외**: `update <path>` 는 인자로 받은 외부 경로를 대상 프로젝트로 사용한다(이때 프로젝트명은 `basename <path>`).
-- **수량으로 분기**: 재시작 모드에서 행 수가 0 → 안내, 1 → 자동, 2+ → `AskUserQuestion` 으로 선택.
+- **인자가 곧 모드**: 인자가 있으면 (`restart`/`update`/`nssm`/`show`/`all`/`add`/`<port>`/`rm`...) 모드 선택 단계 없이 곧장 그 모드 절차로 들어간다. 인자가 없을 때만 `AskUserQuestion` 으로 모드를 묻는다.
+- **수량으로 분기**: 재시작 모드 진입 후 행 수가 0 → 안내, 1 → 자동, 2+ → `AskUserQuestion` 으로 선택.
 - **재시작은 명시적 절차**: `status → kill(있을 때만) → start → status` 순서를 따른다.
 
 ## 인자 분기 (`$ARGUMENTS`)
 
 | 인자 | 모드 | 동작 |
 |:---|:---|:---|
-| (없음) | **재시작** | 현재 프로젝트 행을 보여주고 1행이면 자동 재시작, 2+행이면 `AskUserQuestion` 선택 후 재시작. 0행이면 등록 안내. |
+| (없음) | **모드 선택** | `AskUserQuestion` (single) 으로 **재시작 / 등록(update) / NSSM** 중 하나를 받고, 해당 모드 절차로 진입한다. 사용자가 응답하지 않으면 아무 작업도 하지 않고 종료. |
+| `restart` | **재시작** | AskUserQuestion 건너뛰고 곧장 재시작 모드 진입. 현재 프로젝트 행 수 0/1/2+ 에 따라 분기 (등록 안내 / 자동 / 선택). |
 | `show` | **조회** | 현재 프로젝트 행을 출력만. 재시작 안 함. 0행이면 미등록 메시지. |
 | `all` 또는 `list` | **전체 조회** | `port_list.md` 전체 표를 그대로 출력. 다른 프로젝트 포함. |
 | `update` | **자동 발견 등록 (현재 프로젝트)** | 현재 프로젝트에 속한 LISTEN 서버를 `discover` 로 찾아 보여주고, `AskUserQuestion` multiSelect 로 등록 대상을 고르게 한다. 다른 프로젝트와 같은 포트면 충돌 경고. |
@@ -111,7 +113,21 @@ OPS="$CLAUDE_PROJECT_DIR/.claude/skills/port_manager/port_ops.sh"
 export PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
 ```
 
-### 모드: 재시작 (인자 없음)
+### 모드: (인자 없음) — 모드 선택
+
+인자가 전혀 없을 때만 이 단계로 들어온다. `restart`/`update`/`nssm` 인자가 명시되면 이 단계를 건너뛰고 곧장 해당 모드로 간다.
+
+1. 의사결정에 쓸 보조 데이터를 한 번에 모은다 (각 옵션의 description 에 미리 채워 보여주기 위함):
+   - 등록 행 수: `"$OPS" list "$PROJECT" | wc -l`
+   - NSSM 가용성: `"$OPS" nssm check` 의 exit code
+2. `AskUserQuestion` (multiSelect: false) 로 세 가지 모드 중 하나를 받는다 (§AskUserQuestion 규약).
+3. 선택 결과에 따라 분기:
+   - **재시작** → §모드: 재시작 절차로 이동 (인자 `restart` 와 동일 경로).
+   - **등록(update)** → §모드: 자동 발견 등록 절차로 이동 (인자 없는 `update` 와 동일 경로).
+   - **NSSM** → §모드: NSSM (인자 없음) 절차로 이동 (현재 프로젝트 서비스 상태표).
+4. 사용자가 모달을 닫거나 응답하지 않으면 아무 부작용도 일으키지 않고 종료한다.
+
+### 모드: 재시작 (`restart` 또는 모드 선택에서 "재시작")
 
 1. `"$OPS" list "$PROJECT"` 로 행 수집.
 2. 행 수 분기:
@@ -238,6 +254,24 @@ export PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
 본 SKILL.md 의 §인자 분기 표를 그대로 출력하고 종료. 다른 행동 없음.
 
 ## AskUserQuestion 규약
+
+### 모드 선택 — 인자 없음
+
+```yaml
+question: "<PROJECT> · port_manager — 어떤 작업을 할까요?"
+header: "모드 선택"
+multiSelect: false
+options:
+  - label: "재시작 — 등록된 서버 기동/재기동"
+    description: "port_list.md 행 기준 status → kill → start. 현재 등록 N개."
+  - label: "등록(update) — 실행/선언 서버 발견 후 SSOT 등록"
+    description: "discover + inspect 결과를 multiSelect 로 골라 add/update."
+  - label: "NSSM — Windows 서비스 상태 / 관리"
+    description: "관리자 쉘에서 install/start/stop/restart. nssm 가용: OK | 미설치."
+```
+
+- 옵션 description 의 "현재 등록 N개" 와 "nssm 가용" 은 호출 직전 `"$OPS" list "$PROJECT"` 행 수와 `"$OPS" nssm check` exit code 로 채워 넣는다.
+- 같은 동작을 인자로 직접 호출하고 싶다는 사용자 의도가 보이면 (`restart`, `update`, `nssm` 입력) 이 질문을 보내지 않고 곧장 해당 모드로 진입한다.
 
 ### 재시작 모드 — 2+ 행 선택
 
@@ -477,6 +511,7 @@ URL 줄은 **기동 후 status 재확인이 `RUNNING` 일 때만** 출력한다.
 ## 체크리스트
 
 - [ ] `$ARGUMENTS` 를 모드 분기 표에 맞게 해석했다.
+- [ ] 인자가 없으면 `AskUserQuestion` 으로 모드(재시작/등록/NSSM)를 먼저 받았다. `restart`/`update`/`nssm` 인자가 있으면 모드 선택을 건너뛰고 곧장 진입했다.
 - [ ] 모든 표 mutation 은 `port_ops.sh` 로 위임했다 (직접 편집 금지).
 - [ ] 재시작 모드에서 행 수에 따라 분기(0/1/2+) 했다.
 - [ ] 2+ 행에 대해 `AskUserQuestion` 으로 물었다.
