@@ -39,7 +39,7 @@ md2docx_source — source(.md) 전처리 파이프라인 (discover + lint + stri
                                                     (LLM 이 새 패턴 제안 시 사용)
   python md2docx_source.py <source.md> --skip-lint  lint 건너뛰고 strip만 검출
   python md2docx_source.py <source.md> --apply-strip <pid1,pid2,...>
-                                                    선택된 패턴 적용 → skill output/<source_stem>_prep.md
+                                                    선택된 패턴 적용 → <cwd>/md2docx_source/<stem>_prep.md
   python md2docx_source.py <source.md> --apply-strip <pid1,pid2,...> --out X.md
                                                     지정 경로로 저장
 
@@ -47,7 +47,7 @@ md2docx_source — source(.md) 전처리 파이프라인 (discover + lint + stri
 ====
 
   <source.md>           변환할 Markdown 입력(source).
-                        산출물(<source>_prep.md) 은 스킬 내부 output/ 에 생성.
+                        산출물(<source>_prep.md) 은 <cwd>/md2docx_source/ 에 생성.
                         source 는 절대 수정되지 않는다.
 
   --discover            패턴 발견 단계만 실행 (lint·strip 건너뜀).
@@ -61,7 +61,7 @@ md2docx_source — source(.md) 전처리 파이프라인 (discover + lint + stri
 
   --apply-strip <pid1,pid2,...>
                         선택된 strip 패턴을 source.md (보존) 에 적용한 사본을
-                        <skill_dir>/output/<source_stem>_prep.md 로 저장.
+                        <cwd>/md2docx_source/<source_stem>_prep.md 로 저장.
 
   --out <file>          --apply-strip 의 출력 경로 (선택).
 
@@ -74,7 +74,7 @@ md2docx_source — source(.md) 전처리 파이프라인 (discover + lint + stri
 
   # lint 무시하고 strip 패턴 적용
   python md2docx_source.py report.md --apply-strip heading-manual-number,remove-hrule
-      → <skill_dir>/output/report_prep.md 생성
+      → <cwd>/md2docx_source/report_prep.md 생성
 
   # 지정 경로로 저장
   python md2docx_source.py report.md --apply-strip p1,p2 --out custom.md
@@ -215,10 +215,10 @@ def main():
 
     # === Step 2: strip — 패턴 검출 / 적용 (references/strip_patterns.json) ===
     if apply_strip_ids:
-        # 선택된 패턴을 source 에 적용 → <skill_dir>/output/<source_stem>_prep.md 생성
-        # (out_override 가 있으면 그 경로 사용; 없으면 strip.py 의 기본값 = skill output/)
+        # 선택된 패턴을 source 에 적용 → <cwd>/md2docx_source/<stem>_prep.md 생성
+        # (out_override 가 있으면 그 경로 사용; 없으면 strip.py 의 기본값)
         extra_args = ["--out", str(out_override)] if out_override else []
-        target_label = str(out_override) if out_override else "(skill output/<stem>_prep.md)"
+        target_label = str(out_override) if out_override else "(cwd/md2docx_source/<stem>_prep.md)"
         print()
         print(f"[2/?] strip 적용: {md.name} -> {target_label}  (패턴: {', '.join(apply_strip_ids)})")
         strip_result = subprocess.run(

@@ -1,30 +1,32 @@
 ---
 name: md2docx_target
-description: 사용자 target.docx (회사 양식 raw) → <target_stem>_ref.docx (Pandoc 호환 reference) 변환만 수행하는 단일 기능 스킬. md→docx 변환(convert) 은 포함하지 않음. 회사 어휘(heading 1, Quote 등) 와 Pandoc 어휘(Heading 1, Block Text 등) 의 불일치를 SEMANTIC_HINTS / STUB_DEFINITIONS 기반 basedOn 상속으로 자동 해결해, skill 내부 output/ 폴더에 <target_stem>_ref.docx 와 <target_stem>_ref.report.md 를 누적 저장한다. 회사 numbering 은 markdown 리스트에 자동 적용하지 않으며(Pandoc 기본 유지) AskUserQuestion 게이트도 없다.
+description: 사용자 target.docx (회사 양식 raw) → <target_stem>_template.docx (Pandoc 호환 reference, 외부 이름은 template) 변환만 수행하는 단일 기능 스킬. md→docx 변환(convert) 은 포함하지 않음. 회사 어휘(heading 1, Quote 등) 와 Pandoc 어휘(Heading 1, Block Text 등) 의 불일치를 SEMANTIC_HINTS / STUB_DEFINITIONS 기반 basedOn 상속으로 자동 해결해, <cwd>/md2docx_target/ 폴더에 <target_stem>_template.docx 와 <target_stem>_template.report.md 를 저장한다. 회사 numbering 은 markdown 리스트에 자동 적용하지 않으며(Pandoc 기본 유지) AskUserQuestion 게이트도 없다.
 ---
 
-# md2docx_target — target.docx → reference.docx (map only)
+# md2docx_target — target.docx → template.docx (map only)
 
 ## 목적
 
-**사용자 회사 양식 target.docx 하나를 받아 Pandoc 호환 reference docx 한 개를 생성한다.** 그게 전부다.
+**사용자 회사 양식 target.docx 하나를 받아 Pandoc 호환 reference(=template) docx 한 개를 생성한다.** 그게 전부다.
 
 - 입력: target.docx (회사 양식 raw)
-- 출력: `output/<target_stem>_ref.docx` (Pandoc `--reference-doc` 입력으로 쓸 수 있는 docx) + `output/<target_stem>_ref.report.md` (매핑 분석 리포트)
+- 출력: `<cwd>/md2docx_target/<target_stem>_template.docx` (Pandoc `--reference-doc` 입력으로 쓸 수 있는 docx) + `<cwd>/md2docx_target/<target_stem>_template.report.md` (매핑 분석 리포트)
 - **md → docx 변환은 본 스킬 범위 밖.** convert 가 필요하면 [`md2docx`](../md2docx/SKILL.md) 사용.
+
+> **명명 메모**: 파일·폴더 외부 이름은 사용자 친숙도를 위해 **template** 으로 통일했지만, 기능적으로는 Pandoc 의 `--reference-doc` 입력 docx (canonical 용어 = reference) 이다. 본 스킬 코드 안에서는 `reference` 와 `template` 이 동일 객체를 가리킨다.
 
 ## 용어 (canonical, md2docx 와 동일)
 
 | 용어 | 의미 |
 |---|---|
 | **target** | 회사가 가진 목표 스타일 원본 docx (회사 양식 raw). pandoc 이 직접 읽지 않는다 |
-| **reference** | pandoc `--reference-doc` 가 받는 스타일 템플릿 docx. target 을 매핑/정규화한 결과 |
+| **reference** | pandoc `--reference-doc` 가 받는 스타일 docx. target 을 매핑/정규화한 결과. **파일·폴더 외부 이름은 `template`** 으로 노출 (사용자 친숙도) — 본 스킬 안에서 reference = template 동일 객체 |
 | **map** | target → reference 변환 단계. 본 스킬이 수행하는 유일한 작업 |
 
 ## 인자 형식
 
 ```
-python map.py <target.docx>                           # 기본 — skill output/ 에 reference 저장
+python map.py <target.docx>                           # 기본 — <cwd>/md2docx_target/ 에 저장
 python map.py <target.docx> --out <path.docx>         # 출력 경로 명시
 python map.py <target.docx> --map <mapping.json>      # 사용자 매핑 오버라이드
 python map.py <target.docx> --report <path.md>        # 리포트 경로 명시
@@ -32,33 +34,33 @@ python map.py <target.docx> --report <path.md>        # 리포트 경로 명시
 
 ## 산출물
 
-target 1개당 reference + 리포트 1쌍이 생성된다:
+target 1개당 template docx + 리포트 1쌍이 생성된다:
 
 | 산출물 | 경로 패턴 | 내용 |
 |---|---|---|
-| reference docx | `<skill_dir>/output/<target_stem>_ref.docx` | target 의 styles.xml 에 Pandoc 어휘 스타일을 `basedOn` 으로 추가한 결과. Pandoc `--reference-doc` 입력으로 바로 사용 |
-| 리포트 | `<skill_dir>/output/<target_stem>_ref.report.md` | 매핑 plan 분석 (exact / case_mismatch / semantic / stub / missing) + target 의 numbering.xml 참고용 덤프 |
+| template docx | `<cwd>/md2docx_target/<target_stem>_template.docx` | target 의 styles.xml 에 Pandoc 어휘 스타일을 `basedOn` 으로 추가한 결과. Pandoc `--reference-doc` 입력으로 바로 사용 |
+| 리포트 | `<cwd>/md2docx_target/<target_stem>_template.report.md` | 매핑 plan 분석 (exact / case_mismatch / semantic / stub / missing) + target 의 numbering.xml 참고용 덤프 |
 
 stdout 신호 (rc=0 시) 와 에러 형식 상세는 §작동 흐름 의 "신호" 절 참조.
 
 ## 산출물 명명
 
-**target 파일명 stem 뒤에 `_ref` 접미사** (분리자는 언더스코어 `_`, md2docx 의 하이픈 접두사 규약과 의도적으로 구분):
+**target 파일명 stem 뒤에 `_template` 접미사** (분리자는 언더스코어 `_`):
 
-| target | reference docx | report |
+| target | template docx | report |
 |---|---|---|
-| `mydoc.docx` | `output/mydoc_ref.docx` | `output/mydoc_ref.report.md` |
-| `회사양식.docx` | `output/회사양식_ref.docx` | `output/회사양식_ref.report.md` |
-| `408_Statement.docx` | `output/408_Statement_ref.docx` | `output/408_Statement_ref.report.md` |
+| `mydoc.docx` | `<cwd>/md2docx_target/mydoc_template.docx` | `<cwd>/md2docx_target/mydoc_template.report.md` |
+| `회사양식.docx` | `<cwd>/md2docx_target/회사양식_template.docx` | `<cwd>/md2docx_target/회사양식_template.report.md` |
+| `408_Statement.docx` | `<cwd>/md2docx_target/408_Statement_template.docx` | `<cwd>/md2docx_target/408_Statement_template.report.md` |
 
-리포트는 reference docx 의 stem 에 `.report.md` 를 붙인다 (`<target_stem>_ref.report.md`). 같은 target 으로 재호출 시 덮어쓰기.
+리포트는 template docx 의 stem 에 `.report.md` 를 붙인다 (`<target_stem>_template.report.md`). 같은 target 으로 재호출 시 덮어쓰기.
 
 ## 산출물 위치
 
-기본은 **스킬 내부 `output/` 폴더** (`<skill_dir>/output/`). target 별 1쌍이 누적되며 새 target 으로 호출할 때마다 항목이 추가된다. 원본 target.docx 는 수정하지 않는다.
+기본은 **작업 루트(cwd) 의 `md2docx_target/`** 폴더 (cwd 하위 고정 단일 폴더). 폴더가 없으면 자동 생성. 같은 target 으로 재호출 시 그 폴더 안 1쌍을 덮어쓴다. 원본 target.docx 는 수정하지 않는다.
 
 경로 오버라이드:
-- `--out <path.docx>` — reference docx 경로 명시 (cwd 기준 상대 경로 허용)
+- `--out <path.docx>` — template docx 경로 명시 (cwd 기준 상대 경로 허용)
 - `--report <path.md>` — 리포트 경로 명시 (기본은 `--out` 의 stem + `.report.md`)
 
 ---
@@ -77,13 +79,13 @@ stdout 신호 (rc=0 시) 와 에러 형식 상세는 §작동 흐름 의 "신호
 ## 호출 예시
 
 ```powershell
-# 기본 — skill output/ 에 reference 저장
+# 기본 — <cwd>/md2docx_target/ 에 template 저장
 python .claude\skills\md2docx_target\map.py company.docx
-# → .claude\skills\md2docx_target\output\company_ref.docx
-# → .claude\skills\md2docx_target\output\company_ref.report.md
+# → <cwd>\md2docx_target\company_template.docx
+# → <cwd>\md2docx_target\company_template.report.md
 
-# 출력 경로 명시 (cwd 에 저장)
-python .claude\skills\md2docx_target\map.py company.docx --out company_ref.docx
+# 출력 경로 명시
+python .claude\skills\md2docx_target\map.py company.docx --out company_template.docx
 
 # 사용자 매핑 오버라이드 — 특정 Pandoc 이름을 target 의 특정 스타일에 강제 매핑
 python .claude\skills\md2docx_target\map.py company.docx --map mapping.json

@@ -10,7 +10,7 @@ description: source(.md) 전처리 (discover + lint + strip) 전용 스킬. 새 
 **마크다운 원고를 전처리한다.** Pandoc 으로 변환하기 전에 source(.md) 의 헤딩·번호 인벤토리를 관찰해 strip 카탈로그가 부족하면 보강하고, 넘버링·헤딩 모호성을 검사하며, 회사 양식과 충돌하는 패턴을 검출·제거한다. 그게 전부다.
 
 - 입력: source.md (마크다운 원고)
-- 출력: `<skill_dir>/output/<source_stem>_prep.md` (패턴 적용 사본, 선택) + 검사 리포트 (stdout)
+- 출력: `<cwd>/md2docx_source/<source_stem>_prep.md` (패턴 적용 사본, 선택) + 검사 리포트 (stdout)
 - **md → docx 변환은 본 스킬 범위 밖.** 최종 변환까지 필요하면 [`md2docx`](../md2docx/SKILL.md) 사용.
 
 ## 용어 (canonical)
@@ -29,7 +29,7 @@ python md2docx_source.py <source.md>                  # 기본 — lint + strip 
 python md2docx_source.py <source.md> --discover       # 패턴 발견 (inventory + diff) 후 종료
 python md2docx_source.py <source.md> --skip-lint      # strip 만 검출
 python md2docx_source.py <source.md> --apply-strip <pid1,pid2,...>
-                                                      # 패턴 적용 → skill output/<source_stem>_prep.md
+                                                      # 패턴 적용 → <cwd>/md2docx_source/<source_stem>_prep.md
 python md2docx_source.py <source.md> --apply-strip <pid> --out X.md
                                                       # 지정 경로로 저장
 
@@ -43,11 +43,11 @@ python discover.py self-test                          # 카탈로그 전체 samp
 
 ## 산출물 위치
 
-원본 source.md 는 **절대 수정되지 않는다.** 패턴 적용 결과는 **스킬 내부 `output/` 폴더**에 접미사 `_prep` 를 붙인 새 파일로 저장된다:
+원본 source.md 는 **절대 수정되지 않는다.** 패턴 적용 결과는 **작업 루트(cwd)** 의 `md2docx_source/` 폴더에 접미사 `_prep` 를 붙인 새 파일로 저장된다:
 
-- `<skill_dir>/output/<source_stem>_prep.md` (패턴 적용 사본, `--apply-strip` 시만 생성)
+- `<cwd>/md2docx_source/<source_stem>_prep.md` (패턴 적용 사본, `--apply-strip` 시만 생성)
 
-예: `report.md` 의 패턴을 적용하면 `.claude/skills/md2docx_source/output/report_prep.md` 생성.
+예: `c:\proj` 에서 `report.md` 의 패턴을 적용하면 `c:\proj\md2docx_source\report_prep.md` 생성. 폴더가 없으면 자동 생성. 입력 stem 이 이미 `_prep` 으로 끝나면 (재실행) 파일명에 `_prep` 가 중복으로 붙지 않는다.
 
 ---
 
@@ -69,7 +69,7 @@ python .claude\skills\md2docx_source\md2docx_source.py report.md
 
 # lint 무시하고 strip 패턴 적용
 python .claude\skills\md2docx_source\md2docx_source.py report.md --apply-strip heading-manual-number,remove-hrule
-# → .claude\skills\md2docx_source\output\report_prep.md 생성
+# → <cwd>\md2docx_source\report_prep.md 생성
 
 # 지정 경로로 저장
 python .claude\skills\md2docx_source\md2docx_source.py report.md --apply-strip p1,p2 --out custom.md
@@ -196,11 +196,11 @@ reference 의 자동 서식(heading 자동 번호, 표 자동 캡션 등)과 sou
 | `remove-hrule` | remove | 수평 분리선 제거 | `---` 제거 | **제거** (frontmatter 사용 시 유지) |
 | `remove-table-align-markers` | remove | 표 정렬 표기 제거 | `:---:` → `---` | **제거** (셀별 정렬 의도 시 유지) |
 
-**source 는 절대 수정되지 않는다.** 패턴 적용 결과는 스킬 내부 `output/` 폴더에 접미사 `_prep` 를 붙인 새 파일로 저장된다 (`<skill_dir>/output/<source_stem>_prep.md`).
+**source 는 절대 수정되지 않는다.** 패턴 적용 결과는 작업 루트(cwd) 의 `md2docx_source/` 폴더에 접미사 `_prep` 를 붙인 새 파일로 저장된다 (`<cwd>/md2docx_source/<source_stem>_prep.md`).
 
 **Claude 의 처리 절차** — `strip.py` 가 returncode=3 이면 매칭된 패턴 **각각에 대해** `AskUserQuestion` 호출. `kind` 에 따라 옵션 문구를 맞춘다.
 
-**heading-manual-number 는 항상 검토하고 기본은 "제거" 로 권한다** — reference 가 heading 자동 번호를 박는 양식이므로 수동 번호와 이중으로 찍히는 사고가 가장 잦다. 사용자가 명시적으로 "수동 번호 유지" 라고 하지 않는 한 제거하는 게 안전한 기본값. Auto mode 에서는 묻지 말고 바로 제거 적용.
+**heading-manual-number 는 항상 검토하고 기본은 "제거" 로 권한다** — reference 가 heading 자동 번호를 박는 양식이므로 수동 번호와 이중으로 찍히는 사고가 가장 잦다. 사용자가 명시적으로 "수동 번호 유지" 라고 하지 않는 한 제거하는 게 안전한 기본값.
 
 `kind=remove` (예: heading-manual-number):
 > "`<패턴명>` 이 N 곳에서 매칭됐습니다. 이유: `<reason>`. 예: `<before>` → `<after>`. 제거할까요? (권장: 제거)"
@@ -222,7 +222,7 @@ reference 의 자동 서식(heading 자동 번호, 표 자동 캡션 등)과 sou
 스탠드얼론 사용도 가능:
 ```
 python strip.py <source.md> --apply <pid1> [<pid2>...]
-  → skill output/<source_stem>_prep.md 생성, [STRIP-OUT] 경로 출력
+  → <cwd>/md2docx_source/<source_stem>_prep.md 생성, [STRIP-OUT] 경로 출력
 python strip.py <source.md> --apply <pid> --out custom.md
   → 지정 경로로 저장
 ```
@@ -273,7 +273,7 @@ python strip.py <source.md> --apply <pid> --out custom.md
 | 항목 | md2docx | md2docx_source (본 스킬) |
 |---|---|---|
 | 입력 | source.md (+ target.docx) | source.md 만 |
-| 출력 | output.docx + 중간 산출물 | skill output/<source_stem>_prep.md (선택) |
+| 출력 | output.docx + 중간 산출물 | <cwd>/md2docx_source/<source_stem>_prep.md (선택) |
 | 단계 | lint + strip + map + convert + postprocess | **discover (옵션) + lint + strip** |
 | 외부 도구 | pandoc (필수) | markdownlint 등 (선택) |
 | 명명 규약 | 공유 (동일한 lint/strip 정의) | 공유 |
@@ -338,19 +338,20 @@ python strip.py <source.md> --apply <pid> --out custom.md
 
 ## 산출물 명명
 
-- **stem 유도**: 입력 `<source.md>` 의 basename 에서 `.md` 확장자를 제거한 부분을 `<source_stem>` 으로 사용.
+- **stem 유도**: 입력 `<source.md>` 의 basename 에서 `.md` 확장자를 제거한 부분을 `<source_stem>` 으로 사용. 입력 stem 이 이미 `_prep` 으로 끝나면 (재실행 케이스) 파일명에 `_prep` 가 **중복으로 붙지 않는다** (파일 stem 은 입력 그대로).
 - **suffix**: `_prep` 고정 (패턴 적용 사본 표시).
 - **확장자**: `.md` 유지.
+- **폴더 경로**: `<cwd>/md2docx_source/` (cwd 하위 고정 단일 폴더). 없으면 자동 생성.
 - **사용자 지정**: `--out <path>` 로 임의 경로 지정 가능 (단, 원본과 같은 경로는 거부 — strip.py:406).
 - **충돌 시**: 같은 경로에 기존 파일이 있으면 **덮어쓰기** (백업 안 함, git 으로 복구).
 
-예: `report.md` → `report_prep.md`, `electric_report.md` → `electric_report_prep.md`.
+예: `report.md` → `<cwd>/md2docx_source/report_prep.md`, `electric_report.md` → `<cwd>/md2docx_source/electric_report_prep.md`.
 
 ## AskUserQuestion
 
-| 트리거 | 질문 요지 | 옵션 | 기본 권장 / Auto mode |
+| 트리거 | 질문 요지 | 옵션 | 기본 권장 |
 |---|---|---|---|
 | `[LINT-AMBIGUOUS]` — `lint.py` returncode=2 (MD001/003/004/025/029/030 등 모호성 감지) | "넘버링/heading 스타일이 모호합니다. 어떤 스타일로 통일할까요?" | (1) 수정 후 재실행 / (2) 그대로 진행 (`--skip-lint`) | 사용자 판단 (스타일 결정은 도메인 지식) |
-| `[STRIP-MATCH] <id>` — `strip.py` returncode=3, `kind=remove` (예: `heading-manual-number`, `bold-manual-number`, `remove-hrule`, `remove-table-align-markers`) | "`<패턴명>` 이 N 곳 매칭됐습니다. 이유: `<reason>`. 예: `<before>` → `<after>`. 제거할까요?" | (1) **제거** (권장) / (2) 유지 | **제거**. `heading-manual-number` 는 reference 자동 번호와 이중 표기 사고가 잦아 Auto mode 에서는 묻지 말고 바로 제거 ([[feedback-md2docx-strip-heading-number]]). |
+| `[STRIP-MATCH] <id>` — `strip.py` returncode=3, `kind=remove` (예: `heading-manual-number`, `bold-manual-number`, `remove-hrule`, `remove-table-align-markers`) | "`<패턴명>` 이 N 곳 매칭됐습니다. 이유: `<reason>`. 예: `<before>` → `<after>`. 제거할까요?" | (1) **제거** (권장) / (2) 유지 | **제거**. 특히 `heading-manual-number` 는 reference 자동 번호와 이중 표기 사고가 잦으므로 사용자가 명시적으로 "유지" 라고 하지 않는 한 제거 ([[feedback-md2docx-strip-heading-number]]). |
 | `[STRIP-MATCH] <id>` — `strip.py` returncode=3, `kind=promote` (예: `promote-bullets-to-subheading`, `promote-ordered-to-subheading`) | "`<패턴명>` 이 N 곳 매칭됐습니다. heading 으로 승격할까요, 마커로 유지할까요?" | (1) heading 으로 승격 / (2) 마커 유지 | 사용자 판단 (깊은 heading 직속 리스트만 후보지만 의도 분기 가능). |
 | `[DISCOVER-CANDIDATES]` — `--discover` returncode=3, 카탈로그 미매칭 후보 발견 | (질문 아님 — LLM 이 후보를 보고 자체 판단) 새 패턴이 필요한가? | (1) 기존 entry regex 확장 / (2) 새 id 로 add / (3) 의도적 제외 (skip) | LLM 판단 — 묻지 않음. [[feedback-md2docx-strip-accumulate]] 에 따라 새 종류 충돌이면 적극 추가. |
