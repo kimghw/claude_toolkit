@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-md2docx_pstyle/apply.py — decisions.json 을 받아 output docx 의 단락 pStyle/ind 정규화
+md2docx_pstyle/apply.py — decisions.json 을 받아 input docx 의 단락 pStyle/ind 정규화
 
 설계:
     scan.py 의 보고서 → Claude AskUserQuestion → 사용자 결정으로 finalized 된
@@ -29,8 +29,8 @@ action 별 동작:
     - 같은 인덱스 중복 지정        → 마지막 decision 이 이김
 
 CLI:
-    python apply.py <output.docx> <decisions.json>
-    python apply.py <output.docx> <decisions.json> --out <patched.docx>
+    python apply.py <input.docx> <decisions.json>
+    python apply.py <input.docx> <decisions.json> --out <patched.docx>
 
 종료 코드:
     0 = 성공
@@ -386,17 +386,17 @@ def main():
         pass
 
     ap = argparse.ArgumentParser(
-        description="decisions.json 을 받아 output docx 의 단락 pStyle/ind 정규화"
+        description="decisions.json 을 받아 input docx 의 단락 pStyle/ind 정규화"
     )
-    ap.add_argument('docx', help="대상 output docx (in-place 또는 --out 지정)")
+    ap.add_argument('input', help="대상 input docx (in-place 또는 --out 지정)")
     ap.add_argument('decisions', help="finalized decisions.json 경로")
     ap.add_argument('--out', help="별도 출력 경로 (기본: in-place)")
     args = ap.parse_args()
 
-    inp = Path(args.docx)
+    inp = Path(args.input)
     dec_path = Path(args.decisions)
     if not inp.exists():
-        print(f"[APPLY-LINE] ERROR: docx not found: {inp}", file=sys.stderr)
+        print(f"[APPLY-LINE] ERROR: input docx not found: {inp}", file=sys.stderr)
         return 1
     if not dec_path.exists():
         print(f"[APPLY-LINE] ERROR: decisions.json not found: {dec_path}", file=sys.stderr)

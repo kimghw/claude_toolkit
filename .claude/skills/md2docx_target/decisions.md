@@ -2,7 +2,7 @@
 
 본 스킬은 [`md2docx`](../md2docx/decisions.md) 의 매핑 정책을 그대로 공유한다. 본 문서는 `md2docx_target` 이 적용하는 결정만 요약하고, 변경된 부분(명명 규약, 게이트 정책)을 명시한다.
 
-모든 결정은 `map.py` 의 데이터 상수(`PANDOC_STYLES`, `SEMANTIC_HINTS`, `STUB_DEFINITIONS`)로 인코딩되어 있다.
+모든 결정은 `md2docx_target.py` 의 데이터 상수(`PANDOC_STYLES`, `SEMANTIC_HINTS`, `STUB_DEFINITIONS`)로 인코딩되어 있다.
 
 ---
 
@@ -39,7 +39,7 @@ target 의 회사 어휘 ↔ Pandoc 어휘 매칭. 주요 항목:
 | `Compact` | `List Paragraph`, `Compact` |
 | `toc 1~9` | `toc N`, `TOC N`, `heading N`, `Heading N` |
 
-전문은 `map.py` 의 `SEMANTIC_HINTS` 참조.
+전문은 `md2docx_target.py` 의 `SEMANTIC_HINTS` 참조.
 
 ## 결정 4: Stub 디폴트 — `STUB_DEFINITIONS`
 
@@ -70,26 +70,27 @@ semantic 매칭이 실패하는 critical/important 스타일에 합리적 디폴
 
 ---
 
-## 결정 6: 명명 규약 — `<target_stem>_ref.docx` (`_ref` 접미사, stem 그대로)
+## 결정 6: 명명 규약 — `<target_stem>_reference.docx` (`_reference` 접미사, stem 그대로)
 
 본 스킬의 산출물은 다음 명명 규약을 따른다:
 
 ```
-<skill_dir>/output/<target_stem>_ref.docx
-<skill_dir>/output/<target_stem>_ref.report.md
+<cwd>/md2docx_target/<target_stem>_reference.docx
+<cwd>/md2docx_target/<target_stem>_reference.report.md
 ```
 
-- target 파일명 stem 뒤에 `_ref` 접미사를 붙인다 (접두사 추출/변형 없음)
+- target 파일명 stem 뒤에 `_reference` 접미사를 붙인다 (접두사 추출/변형 없음)
 - 분리자는 **언더스코어**(`_`) — md2docx 의 하이픈(`-`) 접두사 규약과 의도적으로 구분
+- 어휘는 Pandoc 의 canonical 용어 `reference` 를 그대로 사용 (`--reference-doc` 입력 docx 임을 명시)
 
 예:
 
 | target | output |
 |---|---|
-| `mydoc.docx` | `mydoc_ref.docx` |
-| `회사양식.docx` | `회사양식_ref.docx` |
+| `mydoc.docx` | `mydoc_reference.docx` |
+| `회사양식.docx` | `회사양식_reference.docx` |
 
-근거: stem 변형 없이 단순 접미사 부착만으로 충분. 접미사 충돌은 실무에서 거의 발생하지 않아 추가 처리 로직 불필요 (사용자 결정 2026-05-18).
+근거: stem 변형 없이 단순 접미사 부착만으로 충분. 접미사 충돌은 실무에서 거의 발생하지 않아 추가 처리 로직 불필요 (사용자 결정 2026-05-18, 명명 어휘 `_ref` → `_reference` 갱신 2026-05-27).
 
 ---
 
@@ -113,7 +114,7 @@ target 의 numbering.xml 에 list 정의(예: `1.`, `①`, `가.`)가 있어도 
 | PANDOC_STYLES, SEMANTIC_HINTS, STUB_DEFINITIONS | 동일 | 동일 |
 | 매칭 우선순위 | 동일 | 동일 |
 | 정책적 제외 | 동일 | 동일 |
-| 명명 규약 | `reference-<label>.docx` (하이픈 접두사) | `<target_stem>_ref.docx` (`_ref` 접미사, stem 그대로) |
+| 명명 규약 | `reference-<label>.docx` (하이픈 접두사) | `<target_stem>_reference.docx` (`_reference` 접미사, stem 그대로) |
 | Numbering 게이트 | AskUserQuestion 3옵션 (rc=4) | **없음** (조용히 진행) |
 | convert 후처리 | 포함 (lint, strip, postprocess, verify) | **없음** (map 만) |
 
@@ -122,3 +123,4 @@ target 의 numbering.xml 에 list 정의(예: `1.`, `①`, `가.`)가 있어도 
 ## 변경 이력
 
 - 2026-05-18 — 초기 작성. md2docx 의 매핑 정책 상수(PANDOC_STYLES / SEMANTIC_HINTS / STUB_DEFINITIONS) 그대로 채택. 명명은 stem 뒤 `_ref` 접미사(접두사 추출 없음). numbering 게이트 제거 (사용자 결정).
+- 2026-05-27 — 명명 어휘 `_ref` → `_reference` 로 갱신 (사용자 요청). 산출물 폴더도 `<skill_dir>/output/` → `<cwd>/md2docx_target/` 으로 변경. md2docx 의 `template/` 캐시 명명도 동일하게 `_reference` 로 정렬.

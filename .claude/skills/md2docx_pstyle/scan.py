@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
 """
-md2docx_pstyle/scan.py — target inventory + output pstyle_usage → JSON
+md2docx_pstyle/scan.py — target inventory + input pstyle_usage → JSON
 
 목적:
-    1) target.docx (회사 양식 raw) 에서 다음을 추출
+    1) target.docx (회사 양식 raw) 또는 reference.docx (target → reference 변환 산출물)
+       에서 다음을 추출 (styles.xml 동일 어휘 가정 — 둘 중 하나만 받음)
         - heading_inventory : styles.xml 에서 heading 계열 (heading 1~9, Heading 1~9, 제목 1~9 등)
         - list_styles        : styles.xml 에서 List Paragraph 계열 (List Paragraph, 목록단락, ListNumber 등)
         - marker_hierarchy   : document.xml 의 마커(□ ○ - * (가) 1) 등) 단락에서 학습한
                                (marker, leading whitespace, ind_left, ind_leftChars) 의 level 부여
-    2) output.docx (정규화 대상) 에서 단락별 사용 현황을 추출
+    2) input.docx (정규화 대상 — 후처리 입력) 에서 단락별 사용 현황을 추출
         - pstyle_usage       : (idx, pStyle, has_numpr, numId/ilvl, marker, ind) → kind 별 그룹화
     3) JSON 보고서로 출력 — 다음 단계 (Claude AskUserQuestion + apply.py) 의 입력.
 
 본 스크립트는 **수집만** 한다 — 어떤 docx 도 수정하지 않는다.
 
 규약 (apply.py 와의 계약):
-    paragraph_indices 는 output 의 word/document.xml 에서
+    paragraph_indices 는 input 의 word/document.xml 에서
     re.finditer(r'<w:p\b[^>]*>.*?</w:p>', xml, re.DOTALL) 로 열거한 0-based index.
     apply.py 도 동일한 정규식·동일한 순서로 열거해야 한다.
 
 Usage:
-    python scan.py <output.docx> --target <target.docx>
-    python scan.py <output.docx> --target <target.docx> --out-report <json>
+    python scan.py <input.docx> --target <target.docx>
+    python scan.py <input.docx> --reference <reference.docx>
+    python scan.py <input.docx> --target <target.docx> --out-report <json>
+
+--target 과 --reference 는 mutually exclusive, 정확히 하나는 필수.
+둘 다 styles.xml 동일 어휘로 추출 (target = 회사 양식 raw,
+reference = target → reference 변환 산출물 — 둘 다 같은 list/heading 스타일 보유).
 
 종료 코드:
     0 = 성공
@@ -433,10 +439,10 @@ def _assign_level(marker: str, ind: dict, m2l: dict) -> int | None:
 # output.document.xml → pstyle_usage
 # ---------------------------------------------------------------------------
 
-def scan_output_pstyles(output_doc_xml: str, hierarchy: list,
-                        output_style_names: dict | None = None,
+def scan_output_pstyles(input_doc_xml: str, hierarchy: list,
+                        input_style_names: dict | None = None,
                         numid_fmt_map: dict | None = None) -> list:
-    r"""output 단락을 enumerate 하면서 kind 별 그룹화.
+    r"""input 단락을 enumerate 하면서 kind 별 그룹화.
 
     분류 결정 우선순위 (계약 — apply.py 도 동일 가정):
         한 단락이 동시에 여러 조건을 만족할 수 있는 hybrid 라도
@@ -452,7 +458,7 @@ def scan_output_pstyles(output_doc_xml: str, hierarchy: list,
           시각적 의미가 더 직접적 — list_styled(pStyle 만으로 List Paragraph
           계열 추정) 는 numPr 도 마커도 없을 때만 잡는다.
 
-    kind (output_style_names 가 주어진 경우 pStyle → 실제 name 으로 해석):
+    kind (input_style_names 가 주어진 경우 pStyle → 실제 name 으로 해석):
         heading      : pStyle name 이 'heading N' / 'Heading N' / '제목 N' 매칭.
         list         : <w:numPr> 보유 (heading 이 아닐 때). 본문 마커 글자 유무는 무시.
         marker       : 본문이 마커 패턴으로 시작 (heading/numPr 둘 다 아닐 때).
@@ -465,7 +471,7 @@ def scan_output_pstyles(output_doc_xml: str, hierarchy: list,
         plain        : 위 다 아님 — pStyle 도 없는 default 상속 단락. 그룹화하지 않음.
     """
     m2l = _marker_to_levels(hierarchy)
-    style_names = output_style_names or {}
+    style_names = input_style_names or {}
     nfmap = numid_fmt_map or {}
 
     def _resolve_name(sid: str | None) -> str:
@@ -593,30 +599,35 @@ def _read_xml(docx_path: Path, member: str) -> str:
             return ""
 
 
-def scan(output_path: Path, target_path: Path) -> dict:
-    output_doc_xml = _read_xml(output_path, "word/document.xml")
-    output_styles_xml = _read_xml(output_path, "word/styles.xml")
-    output_numbering_xml = _read_xml(output_path, "word/numbering.xml")
-    target_doc_xml = _read_xml(target_path, "word/document.xml")
-    target_styles_xml = _read_xml(target_path, "word/styles.xml")
+def scan(input_path: Path, style_source_path: Path,
+         style_source_kind: str = "target") -> dict:
+    """input.docx 를 스캔, style_source (target 또는 reference) 의 styles.xml + document.xml 에서
+    스타일·마커 hierarchy 학습. style_source_kind 는 "target" / "reference" — 보고서 메타에만 영향."""
+    input_doc_xml = _read_xml(input_path, "word/document.xml")
+    input_styles_xml = _read_xml(input_path, "word/styles.xml")
+    input_numbering_xml = _read_xml(input_path, "word/numbering.xml")
+    style_doc_xml = _read_xml(style_source_path, "word/document.xml")
+    style_styles_xml = _read_xml(style_source_path, "word/styles.xml")
 
-    heading_inv, list_styles, standard_styles = extract_target_styles(target_styles_xml)
-    output_style_names = extract_style_name_map(output_styles_xml)
-    numid_fmt_map = extract_numid_numfmt_map(output_numbering_xml)
-    hierarchy = learn_marker_hierarchy(target_doc_xml)
-    pstyle_usage = scan_output_pstyles(output_doc_xml, hierarchy,
-                                       output_style_names, numid_fmt_map)
+    heading_inv, list_styles, standard_styles = extract_target_styles(style_styles_xml)
+    input_style_names = extract_style_name_map(input_styles_xml)
+    numid_fmt_map = extract_numid_numfmt_map(input_numbering_xml)
+    hierarchy = learn_marker_hierarchy(style_doc_xml)
+    pstyle_usage = scan_output_pstyles(input_doc_xml, hierarchy,
+                                       input_style_names, numid_fmt_map)
 
-    return {
+    report = {
         "schema_version": 1,
-        "target": str(target_path.resolve()),
-        "output": str(output_path.resolve()),
+        "input": str(input_path.resolve()),
         "heading_inventory": heading_inv,
         "list_styles": list_styles,
         "standard_styles": standard_styles,
         "marker_hierarchy": hierarchy,
         "pstyle_usage": pstyle_usage,
     }
+    # style source 메타 — target 또는 reference 어휘 보존
+    report[style_source_kind] = str(style_source_path.resolve())
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -631,31 +642,39 @@ def main():
         pass
 
     ap = argparse.ArgumentParser(
-        description="target inventory + output pstyle_usage 를 추출해 JSON 보고서 생성"
+        description="style source(target 또는 reference) inventory + input pstyle_usage 를 추출해 JSON 보고서 생성"
     )
-    ap.add_argument("output", help="대상 output docx (스캔만, 수정 안 함)")
-    ap.add_argument("--target", required=True, help="target docx (회사 양식 raw)")
-    ap.add_argument("--out-report", help="JSON 보고서 경로 (기본: cwd/output/<output_stem>_line.json — 단일 파일 덮어쓰기)")
+    ap.add_argument("input", help="대상 input docx (스캔만, 수정 안 함)")
+    style_group = ap.add_mutually_exclusive_group(required=True)
+    style_group.add_argument("--target", help="target docx (회사 양식 raw — styles.xml 추출원)")
+    style_group.add_argument("--reference", help="reference docx (target → reference 변환 산출물 — styles.xml 추출원). --target 과 mutually exclusive, 둘 다 동일하게 쓰임.")
+    ap.add_argument("--out-report", help="JSON 보고서 경로 (기본: cwd/md2docx_pstyle/<input_stem>_line.json — 단일 파일 덮어쓰기)")
     args = ap.parse_args()
 
-    output_path = Path(args.output)
-    target_path = Path(args.target)
-    if not output_path.exists():
-        print(f"[SCAN-LINE] ERROR: output not found: {output_path}", file=sys.stderr)
+    input_path = Path(args.input)
+    if args.target:
+        style_source_path = Path(args.target)
+        style_source_kind = "target"
+    else:
+        style_source_path = Path(args.reference)
+        style_source_kind = "reference"
+
+    if not input_path.exists():
+        print(f"[SCAN-LINE] ERROR: input not found: {input_path}", file=sys.stderr)
         return 1
-    if not target_path.exists():
-        print(f"[SCAN-LINE] ERROR: target not found: {target_path}", file=sys.stderr)
+    if not style_source_path.exists():
+        print(f"[SCAN-LINE] ERROR: {style_source_kind} not found: {style_source_path}", file=sys.stderr)
         return 1
 
     if args.out_report:
         report_path = Path(args.out_report)
     else:
-        # 단일 파일 정책 — 같은 output 재스캔 시 덮어쓰기. 여러 버전 관리 안 함.
-        report_path = Path.cwd() / "output" / f"{output_path.stem}_line.json"
+        # 단일 파일 정책 — 같은 input 재스캔 시 덮어쓰기. 여러 버전 관리 안 함.
+        report_path = Path.cwd() / "md2docx_pstyle" / f"{input_path.stem}_line.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        report = scan(output_path, target_path)
+        report = scan(input_path, style_source_path, style_source_kind)
     except Exception as e:
         print(f"[SCAN-LINE] ERROR: scan failed: {e}", file=sys.stderr)
         return 1
@@ -671,7 +690,7 @@ def main():
     for g in report["pstyle_usage"]:
         by_kind[g["kind"]] = by_kind.get(g["kind"], 0) + 1
 
-    print(f"[SCAN-LINE] target: {target_path.name}  → heading_inventory={n_h}, list_styles={n_l}, standard_styles={n_s}, marker_hierarchy={n_m}")
+    print(f"[SCAN-LINE] {style_source_kind}: {style_source_path.name}  → heading_inventory={n_h}, list_styles={n_l}, standard_styles={n_s}, marker_hierarchy={n_m}")
     if report["heading_inventory"]:
         for h in report["heading_inventory"]:
             based = h["basedOn"] or "(none)"
@@ -692,7 +711,7 @@ def main():
         for h in report["marker_hierarchy"]:
             ws_dbg = repr(h["leading_ws"]) if h["leading_ws"] else "''"
             print(f"[SCAN-LINE]   level {h['level']}: '{h['marker']}'  leading_ws={ws_dbg}  ind_left={h['ind_left']}  ind_leftChars={h['ind_leftChars']}")
-    print(f"[SCAN-LINE] output: {output_path.name}  groups: heading={by_kind['heading']} list={by_kind['list']} marker={by_kind['marker']} list_styled={by_kind['list_styled']} standard={by_kind['standard']} styled={by_kind['styled']}")
+    print(f"[SCAN-LINE] input: {input_path.name}  groups: heading={by_kind['heading']} list={by_kind['list']} marker={by_kind['marker']} list_styled={by_kind['list_styled']} standard={by_kind['standard']} styled={by_kind['styled']}")
     print(f"[SCAN-LINE] report: {report_path}")
     return 0
 

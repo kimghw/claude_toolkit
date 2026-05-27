@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-md2docx_target/map.py
+md2docx_target/md2docx_target.py
 
 target.docx (사용자 회사 양식 raw) 를 받아 Pandoc 어휘로 정규화된
 reference docx 하나를 생성한다. 단일 기능 — md → docx 변환(convert) 은
@@ -19,16 +19,16 @@ reference docx 하나를 생성한다. 단일 기능 — md → docx 변환(conv
     상속하는 새 스타일을 Pandoc 이름으로 추가해 reference 로 저장한다.
 
 산출물(기본 — 작업 루트의 md2docx_target/ 폴더에 1쌍):
-    <cwd>/md2docx_target/<target_stem>_template.docx
-    <cwd>/md2docx_target/<target_stem>_template.report.md
+    <cwd>/md2docx_target/<target_stem>_reference.docx
+    <cwd>/md2docx_target/<target_stem>_reference.report.md
 
-    예: mydoc.docx → <cwd>/md2docx_target/mydoc_template.docx
+    예: mydoc.docx → <cwd>/md2docx_target/mydoc_reference.docx
 
 Usage:
-    python map.py <target.docx>                          # 기본: <cwd>/md2docx_target/<stem>_template.docx
-    python map.py <target.docx> --out <path.docx>        # 출력 경로 명시
-    python map.py <target.docx> --map mapping.json       # 사용자 map 오버라이드
-    python map.py <target.docx> --report <path.md>       # 리포트 경로 명시
+    python md2docx_target.py <target.docx>                          # 기본: <cwd>/md2docx_target/<stem>_reference.docx
+    python md2docx_target.py <target.docx> --out <path.docx>        # 출력 경로 명시
+    python md2docx_target.py <target.docx> --map mapping.json       # 사용자 map 오버라이드
+    python md2docx_target.py <target.docx> --report <path.md>       # 리포트 경로 명시
 """
 
 import argparse
@@ -450,9 +450,9 @@ def render_report(plan, styles, input_path, output_path, numbering):
 # ---------------------------------------------------------------------------
 
 def default_output_path(target_path: Path) -> Path:
-    """기본 산출물 경로 — <cwd>/md2docx_target/<target_stem>_template.docx.
-    Pandoc 의 --reference-doc 입력이지만 사용자가 다루는 외부 이름은 "template" 으로 통일한다."""
-    return Path.cwd() / "md2docx_target" / f"{target_path.stem}_template.docx"
+    """기본 산출물 경로 — <cwd>/md2docx_target/<target_stem>_reference.docx.
+    Pandoc 의 --reference-doc 입력 docx (canonical 용어 = reference)."""
+    return Path.cwd() / "md2docx_target" / f"{target_path.stem}_reference.docx"
 
 
 def default_report_path(output_path: Path) -> Path:
@@ -462,10 +462,10 @@ def default_report_path(output_path: Path) -> Path:
 
 def main():
     p = argparse.ArgumentParser(
-        description="target.docx → <target_stem>_template.docx (Pandoc 호환 reference, 외부 이름은 template)",
+        description="target.docx → <target_stem>_reference.docx (Pandoc 호환 reference)",
     )
     p.add_argument("target", help="입력 target.docx (회사 양식 raw)")
-    p.add_argument("--out", help="template 출력 경로 (기본: <cwd>/output_<target_stem>/templates/<target_stem>_template.docx)")
+    p.add_argument("--out", help="reference 출력 경로 (기본: <cwd>/md2docx_target/<target_stem>_reference.docx)")
     p.add_argument("--report", help="리포트 출력 경로 (기본: <out>.report.md)")
     p.add_argument("--map", dest="map_json", metavar="MAPPING.json", help="사용자 map 오버라이드 JSON")
     args = p.parse_args()
