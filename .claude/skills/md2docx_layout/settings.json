@@ -1,0 +1,14 @@
+{
+  "post_table_spacing": {
+    "_comment": "표 직후 단락(빈 문단 기호) 간격 강제 적용. 단위는 twips (1pt=20twips, 1cm≈567twips). 240=12pt, 120=6pt, 480=24pt. line_rule='auto' 면 line 값은 240ths-of-line(240=single, 360=1.5, 480=double). line_rule='exact'|'atLeast' 면 line 은 twips(=20ths-of-point). null 은 해당 속성 미지정(생략).",
+    "enabled": true,
+    "mode": "ensure",
+    "_mode_options": "ensure=다음 sibling 이 빈 단락이면 그 단락 spacing 박음, 아니면 새 빈 단락 삽입 | insert=항상 새 빈 단락 삽입(중복 가능) | patch_existing=빈 단락 있을 때만 patch(없으면 무시) | off=비활성",
+    "spacing_before_twips": 0,
+    "spacing_after_twips": 240,
+    "line_twips": 240,
+    "line_rule": "auto",
+    "skip_nested_tables": true,
+    "_skip_nested": "true 면 <w:tc> 안에 있는 표(셀 내부 nested table) 의 뒤 단락은 건드리지 않음. 셀 끝 필수 단락이라 spacing 박으면 cell 높이 어긋남."
+  }
+}
