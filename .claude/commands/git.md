@@ -15,7 +15,7 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
    ```
    /git [인자]
 
-   (없음)            stage(-A) + 커밋 메시지 자동 생성 + push
+   (없음)            변경 있으면 stage(-A)+커밋 메시지 자동 생성+push / 변경 없으면 git pull
    pull              git pull 실행
    revert            현재 미커밋 변경(staged+unstaged+untracked) 전체 취소 — 사용자 확인 필요
    public            현재 레포의 원격 저장소(origin)를 공개(public)로 전환
@@ -27,7 +27,7 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 1. **인자가 비어 있거나 없는 경우** (기본 동작):
    - `git add -A`로 모든 변경사항 스테이지
    - `git diff --cached --stat`으로 스테이지된 내용 확인
-   - 변경사항이 없으면 "커밋할 내용 없음" 출력 후 종료
+   - 변경사항이 없으면 커밋할 내용이 없으므로 `git pull`을 실행해 원격 변경을 가져온 뒤 종료 (2번 `pull` 동작과 동일)
    - 변경사항이 있으면 diff를 분석해 간결한 커밋 메시지 자동 생성 (한국어, 1줄)
    - `git commit`으로 커밋
    - `git push`로 현재 브랜치에 푸시 (upstream 없으면 `-u origin <branch>` 사용)
