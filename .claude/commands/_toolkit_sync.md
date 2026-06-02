@@ -1,5 +1,5 @@
 ---
-description: "[Windows 전용 권장] 파일 복사 방식의 양방향 동기화: claude_toolkit 원본(.project_id ID)을 grep으로 탐지한 뒤 .claude/를 cp -f 로 동기화. pull=원본→로컬(교집합), push=로컬→원본+git push, push <filepath>=특정 파일만 복붙+커밋+푸시. WSL/Linux/macOS에서는 /toolkit_link + /toolkit_git 권장."
+description: "[Windows 전용 권장] 파일 복사 방식의 양방향 동기화: claude_toolkit 원본(.project_id ID)을 grep으로 탐지한 뒤 .claude/를 cp -f 로 동기화. 인자없음=로컬변경 있으면 push·없으면 pull, pull=원본→로컬(교집합), push=로컬→원본+git push, push <filepath>=특정 파일만 복붙+커밋+푸시. WSL/Linux/macOS에서는 /toolkit_link + /toolkit_git 권장."
 allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 ---
 
@@ -204,7 +204,7 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 
 ### 0. `help` / `-h` / `--help` — 인자 도움말
 
-- 본 명령이 받는 인자(인자 없음=`push`, `pull`, `push [<filepath>...] [--allow-dirty-origin]`, `diff`)와 각 동작 설명만 요약 출력하고 종료. 원본 탐지·**origin sync 점검**·파일 복사·git 작업 전부 수행하지 않는다.
+- 본 명령이 받는 인자(인자 없음=로컬변경 있으면 `push`·없으면 `pull`, `pull`, `push [<filepath>...] [--allow-dirty-origin]`, `diff`)와 각 동작 설명만 요약 출력하고 종료. 원본 탐지·**origin sync 점검**·파일 복사·git 작업 전부 수행하지 않는다.
 
 ### 1. `pull` — 원본 → 로컬, **교집합만**
 
@@ -301,15 +301,18 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 
 ### 4. 인자 없음 또는 기타
 
-- 인자 없음 → **`push` 와 동일하게 동작** (로컬 → 원본 전체 동기화 + `git commit + push`). 사용자가 자주 부르는 동작을 기본값으로 둠.
+- 인자 없음 → **push 방향 변경 유무를 먼저 판정한 뒤 분기**한다:
+  - **판정**: `diff` 의 "로컬 → 원본" 기준과 동일하게, 로컬 `.claude/` 가 원본 `$TOOLKIT/.claude/` 와 **내용이 다르거나 원본에 없는 로컬 신규** 항목이 있는지 확인한다(제외 목록·`.toolignore` 매칭은 빼고 판정). 파일 복사(`cp`)·git 작업 전에 비파괴적으로 비교만 수행한다.
+  - **변경 있음** → 기존대로 **`push`** (2a 전체 push: 로컬 → 원본 전체 동기화 + `git commit + push`).
+  - **변경 없음** (로컬이 원본과 동일 = 푸시할 것 없음) → `push` 대신 **`pull` 동작을 실행**한다(1번 절차: 원본 → 로컬 교집합 갱신). "올릴 게 없으면 받아온다."
 - 첫 번째 인자가 `pull` / `push` / `diff` 가 아닌 미상의 토큰이면 → `pull` / `push` 의 부속 인자(filepath 등)인지 모호하므로 사용법 요약 출력 후 종료. 부분 push 는 반드시 첫 토큰을 `push` 로 시작해야 인식된다 (예: `push commands/foo.md`).
 - 알 수 없는 인자 → 사용법 요약 출력 후 종료.
 
-> ⚠ **기본 동작은 push (파괴적)**: 인자 없이 `/toolkit_sync` 을 호출하면 즉시 로컬 `.claude/` 를 원본에 복사하고 `git commit + push` 까지 수행한다. 영향 범위가 큰 변경 전에는 먼저 `/toolkit_sync diff` 로 미리보기 권장. pull 은 별도 인자 필요.
+> ⚠ **인자 없는 기본 동작 (조건부)**: 로컬 `.claude/` 에 원본과 다른 변경이 있으면 즉시 `push`(로컬 → 원본 복사 + `git commit + push`, **파괴적**)하고, 변경이 없으면 `pull`(원본 → 로컬 교집합 갱신)로 전환한다. push 는 영향 범위가 크므로, 변경이 있는 상태에서 무인자 호출 전에는 먼저 `/toolkit_sync diff` 로 미리보기 권장.
 
 ## 예시
 
-- `/toolkit_sync` → `push` 와 동일 (로컬 → 원본 전체 동기화 + `git commit + push`).
+- `/toolkit_sync` → 로컬에 변경 있으면 `push`(로컬 → 원본 전체 동기화 + `git commit + push`), 변경 없으면 `pull`(원본 → 로컬 교집합 갱신)로 전환.
 - `/toolkit_sync pull` → 원본의 최신 버전으로 로컬의 기존 파일만 갱신 (신규 파일 추가 없음). 원본 dirty 면 경고 후 사용자 확인.
 - `/toolkit_sync push` → 로컬 수정분을 **전체** 원본에 복사 후 `git commit + push`. **원본 dirty 면 기본 중단**.
 - `/toolkit_sync push --allow-dirty-origin` → 원본 dirty 에도 불구하고 강제 진행(혼합 커밋이 생성될 수 있음).
